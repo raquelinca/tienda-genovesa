@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import Dashboard from './pages/Dashboard';
 import Inventario from './pages/Inventario';
+import Ventas from './pages/Ventas';
 
 function App() {
   const [pantalla, setPantalla] = useState('dashboard');
@@ -23,10 +24,15 @@ function App() {
           style={{background: pantalla==='inventario' ? '#3D2B00' : 'transparent',color: pantalla==='inventario' ? '#FFD600' : '#3D2B00',border:'none',borderRadius:'6px',padding:'6px 12px',fontSize:'12px',fontWeight:'500',cursor:'pointer'}}>
           Inventario
         </button>
+        <button onClick={() => setPantalla('ventas')}
+          style={{background: pantalla==='ventas' ? '#3D2B00' : 'transparent',color: pantalla==='ventas' ? '#FFD600' : '#3D2B00',border:'none',borderRadius:'6px',padding:'6px 12px',fontSize:'12px',fontWeight:'500',cursor:'pointer'}}>
+          Ventas
+        </button>
       </div>
 
-      {pantalla === 'dashboard' && <Dashboard />}
+      {pantalla === 'dashboard'  && <Dashboard />}
       {pantalla === 'inventario' && <Inventario />}
+      {pantalla === 'ventas'     && <Ventas />}
     </div>
   );
 }

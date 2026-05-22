@@ -10,6 +10,8 @@ app.use(express.urlencoded({ extended: true }));
 
 app.use('/api/productos',
   require('./routes/productos.routes'));
+app.use('/api/ventas', 
+  require('./routes/ventas.routes'));  
 
 app.use((err, req, res, next) => {
   console.error(err);
