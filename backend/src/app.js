@@ -3,10 +3,17 @@ const cors = require('cors');
 require('dotenv').config();
 
 const app = express();
+
 app.use(cors());
 app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 
 app.use('/api/productos',
   require('./routes/productos.routes'));
+
+app.use((err, req, res, next) => {
+  console.error(err);
+  res.status(500).json({ ok: false, mensaje: err.message });
+});
 
 module.exports = app;

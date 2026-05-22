@@ -14,8 +14,16 @@ export default function Inventario() {
   const [busqueda, setBusqueda] = useState('');
 
   const cargar = async () => {
-    const data = await api.get('/productos');
-    if (data.ok) setProductos(data.data);
+    try {
+      const data = await api.get('/productos');
+      if (data.ok && Array.isArray(data.data)) {
+        setProductos(data.data);
+      } else {
+        setProductos([]);
+      }
+    } catch {
+      setProductos([]);
+    }
   };
 
   useEffect(() => { cargar(); }, []);
@@ -39,9 +47,9 @@ export default function Inventario() {
     }
   };
 
-  const filtrados = productos.filter(p =>
+  const filtrados = Array.isArray(productos) ? productos.filter(p =>
     p.nombre.toLowerCase().includes(busqueda.toLowerCase())
-  );
+  ) : [];
 
   return (
     <div style={{background:'#1a1a2e',minHeight:'100vh',padding:'20px',color:'#fff',fontFamily:'sans-serif'}}>

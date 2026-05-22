@@ -8,17 +8,14 @@ const headers = () => ({
 export const api = {
   get: (url) =>
     fetch(`${BASE}${url}`, { headers: headers() })
-      .then(async (r) => ({ ok: r.ok, data: await r.json() })), // Estructura compatible
-
+    .then(r => r.json()),
   post: (url, body) =>
-    fetch(`${BASE}${url}`, { method: 'POST', headers: headers(), body: JSON.stringify(body) })
-      .then(async (r) => ({ ok: r.ok, data: await r.json() })),
-
+    fetch(`${BASE}${url}`, { method:'POST', headers:headers(), body:JSON.stringify(body) })
+    .then(r => r.json()),
   put: (url, body) =>
-    fetch(`${BASE}${url}`, { method: 'PUT', headers: headers(), body: JSON.stringify(body) })
-      .then(async (r) => ({ ok: r.ok, data: await r.json() })),
-
+    fetch(`${BASE}${url}`, { method:'PUT', headers:headers(), body:JSON.stringify(body) })
+    .then(r => r.json()),
   delete: (url) =>
-    fetch(`${BASE}${url}`, { method: 'DELETE', headers: headers() })
-      .then((r) => ({ ok: r.ok })), // Para el delete solo nos importa si fue OK
+    fetch(`${BASE}${url}`, { method:'DELETE', headers:headers() })
+    .then(r => r.json()),
 };
