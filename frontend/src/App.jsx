@@ -2,6 +2,7 @@ import { useState } from 'react';
 import Dashboard from './pages/Dashboard';
 import Inventario from './pages/Inventario';
 import Ventas from './pages/Ventas';
+import Caja from './pages/Caja';
 import Login from './pages/Login';
 
 function App() {
@@ -47,6 +48,10 @@ function App() {
           style={{background: pantalla==='ventas' ? '#164e63' : 'transparent',color:'#ffffff',border:'none',borderRadius:'6px',padding:'6px 12px',fontSize:'12px',fontWeight:'500',cursor:'pointer'}}>
           Ventas
         </button>
+        <button onClick={() => setPantalla('caja')}
+          style={{background: pantalla==='caja' ? '#164e63' : 'transparent',color:'#ffffff',border:'none',borderRadius:'6px',padding:'6px 12px',fontSize:'12px',fontWeight:'500',cursor:'pointer'}}>
+          Caja
+        </button>
 
         {/* Usuario y cerrar sesión */}
         <div style={{marginLeft:'auto',display:'flex',alignItems:'center',gap:'12px'}}>
@@ -61,6 +66,7 @@ function App() {
       {pantalla === 'dashboard'  && <Dashboard />}
       {pantalla === 'inventario' && <Inventario />}
       {pantalla === 'ventas'     && <Ventas />}
+      {pantalla === 'caja'       && <Caja />}
     </div>
   );
 }
