@@ -62,8 +62,8 @@ export default function Ventas() {
   );
 
   return (
-    <div style={{background:'#1a1a2e',minHeight:'100vh',padding:'20px',color:'#fff',fontFamily:'sans-serif'}}>
-      <h1 style={{color:'#FFD600',fontSize:'20px',marginBottom:'16px'}}>🛍️ Ventas — Tienda Genovesa</h1>
+    <div style={{background:'#0f172a',minHeight:'100vh',padding:'20px',color:'#fff',fontFamily:'sans-serif'}}>
+      <h1 style={{color:'#06b6d4',fontSize:'20px',marginBottom:'16px'}}>🛍️ Ventas — Tienda Genovesa</h1>
 
       {mensaje && (
         <div style={{background:'#00C85320',border:'1px solid #00C85350',borderRadius:'8px',padding:'12px',marginBottom:'16px',color:'#00C853',fontSize:'14px'}}>
@@ -72,25 +72,25 @@ export default function Ventas() {
       )}
 
       <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'16px'}}>
-        <div style={{background:'#16213e',borderRadius:'12px',padding:'16px',border:'1px solid #ffffff15'}}>
-          <div style={{color:'#FFD600',fontSize:'14px',fontWeight:'500',marginBottom:'12px'}}>🛍️ Productos disponibles</div>
+        <div style={{background:'#1e293b',borderRadius:'12px',padding:'16px',border:'1px solid #334155'}}>
+          <div style={{color:'#36d406',fontSize:'14px',fontWeight:'500',marginBottom:'12px'}}>🛍️ Productos disponibles</div>
           <input placeholder="Buscar producto..."
             value={busqueda}
             onChange={e => setBusqueda(e.target.value)}
-            style={{width:'100%',padding:'8px',borderRadius:'6px',border:'1px solid #ffffff30',background:'#0f172a',color:'#fff',fontSize:'13px',marginBottom:'10px',boxSizing:'border-box'}}
+            style={{width:'100%',padding:'8px',borderRadius:'6px',border:'1px solid #334155',background:'#0f172a',color:'#e2e8f0',fontSize:'13px',marginBottom:'10px',boxSizing:'border-box'}}
           />
           {filtrados.map(p => (
-            <div key={p.id} style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'8px',borderRadius:'6px',border:'1px solid #ffffff15',marginBottom:'6px'}}>
+            <div key={p.id} style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'8px',borderRadius:'6px',border:'1px solid #334155',marginBottom:'6px'}}>
               <div>
-                <div style={{fontSize:'13px',color:'#fff'}}>{p.nombre}</div>
-                <div style={{fontSize:'11px',color: p.stock_actual <= p.stock_minimo ? '#ff6666' : '#ffffffaa'}}>
+                <div style={{fontSize:'13px',color:'#e2e8f0'}}>{p.nombre}</div>
+                <div style={{fontSize:'11px',color: p.stock_actual <= p.stock_minimo ? '#ff6666' : '#94a3b8'}}>
                   Stock: {p.stock_actual} u.
                 </div>
               </div>
               <div style={{display:'flex',alignItems:'center',gap:'8px'}}>
-                <span style={{fontSize:'13px',color:'#FFD600',fontWeight:'500'}}>${parseFloat(p.precio_venta).toFixed(2)}</span>
+                <span style={{fontSize:'13px',color:'#06b6d4',fontWeight:'500'}}>${parseFloat(p.precio_venta).toFixed(2)}</span>
                 <button onClick={() => agregar(p)}
-                  style={{background:'#FFD600',border:'none',borderRadius:'4px',padding:'4px 8px',fontSize:'11px',fontWeight:'500',cursor:'pointer',color:'#3D2B00'}}>
+                  style={{background:'linear-gradient(135deg,#0891b2,#06b6d4)',border:'none',borderRadius:'4px',padding:'4px 8px',fontSize:'11px',fontWeight:'500',cursor:'pointer',color:'#fff'}}>
                   + Agregar
                 </button>
               </div>
@@ -98,51 +98,51 @@ export default function Ventas() {
           ))}
         </div>
 
-        <div style={{background:'#16213e',borderRadius:'12px',padding:'16px',border:'1px solid #ffffff15'}}>
-          <div style={{color:'#FFD600',fontSize:'14px',fontWeight:'500',marginBottom:'12px'}}>🧾 Carrito de venta</div>
+        <div style={{background:'#1e293b',borderRadius:'12px',padding:'16px',border:'1px solid #334155'}}>
+          <div style={{color:'#36d406',fontSize:'14px',fontWeight:'500',marginBottom:'12px'}}>🧾 Carrito de venta</div>
 
           {carrito.length === 0 ? (
-            <p style={{color:'#ffffff50',fontSize:'13px'}}>Agrega productos desde la izquierda.</p>
+            <p style={{color:'#94a3b8',fontSize:'13px'}}>Agrega productos desde la izquierda.</p>
           ) : (
             carrito.map(i => (
-              <div key={i.id} style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'8px',borderBottom:'1px solid #ffffff15'}}>
+              <div key={i.id} style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'8px',borderBottom:'1px solid #334155'}}>
                 <div>
-                  <div style={{fontSize:'13px',color:'#fff'}}>{i.nombre}</div>
-                  <div style={{fontSize:'11px',color:'#ffffffaa'}}>${parseFloat(i.precio_venta).toFixed(2)} c/u</div>
+                  <div style={{fontSize:'13px',color:'#e2e8f0'}}>{i.nombre}</div>
+                  <div style={{fontSize:'11px',color:'#94a3b8'}}>${parseFloat(i.precio_venta).toFixed(2)} c/u</div>
                 </div>
                 <div style={{display:'flex',alignItems:'center',gap:'6px'}}>
                   <button onClick={() => cambiarCantidad(i.id, -1)}
-                    style={{background:'#ffffff20',border:'none',borderRadius:'4px',color:'#fff',width:'22px',height:'22px',cursor:'pointer',fontSize:'14px'}}>-</button>
-                  <span style={{fontSize:'13px',color:'#fff',minWidth:'20px',textAlign:'center'}}>{i.cantidad}</span>
+                    style={{background:'#334155',border:'none',borderRadius:'4px',color:'#e2e8f0',width:'22px',height:'22px',cursor:'pointer',fontSize:'14px'}}>-</button>
+                  <span style={{fontSize:'13px',color:'#e2e8f0',minWidth:'20px',textAlign:'center'}}>{i.cantidad}</span>
                   <button onClick={() => cambiarCantidad(i.id, 1)}
-                    style={{background:'#ffffff20',border:'none',borderRadius:'4px',color:'#fff',width:'22px',height:'22px',cursor:'pointer',fontSize:'14px'}}>+</button>
-                  <span style={{fontSize:'13px',color:'#FFD600',minWidth:'50px',textAlign:'right'}}>${(i.precio_venta * i.cantidad).toFixed(2)}</span>
+                    style={{background:'#334155',border:'none',borderRadius:'4px',color:'#e2e8f0',width:'22px',height:'22px',cursor:'pointer',fontSize:'14px'}}>+</button>
+                  <span style={{fontSize:'13px',color:'#06b6d4',minWidth:'50px',textAlign:'right'}}>${(i.precio_venta * i.cantidad).toFixed(2)}</span>
                 </div>
               </div>
             ))
           )}
 
           <div style={{background:'#0f172a',borderRadius:'8px',padding:'12px',marginTop:'10px'}}>
-            <div style={{display:'flex',justifyContent:'space-between',fontSize:'13px',color:'#ffffffcc',marginBottom:'6px'}}>
+            <div style={{display:'flex',justifyContent:'space-between',fontSize:'13px',color:'#94a3b8',marginBottom:'6px'}}>
               <span>Productos</span><span>{carrito.reduce((s,i) => s + i.cantidad, 0)} items</span>
             </div>
-            <div style={{display:'flex',justifyContent:'space-between',fontSize:'16px',fontWeight:'500',color:'#FFD600',paddingTop:'8px',borderTop:'1px solid #FFD60030'}}>
+            <div style={{display:'flex',justifyContent:'space-between',fontSize:'16px',fontWeight:'500',color:'#06b6d4',paddingTop:'8px',borderTop:'1px solid #0891b240'}}>
               <span>TOTAL</span><span>${total.toFixed(2)}</span>
             </div>
           </div>
 
-          <div style={{fontSize:'12px',color:'#FFD600',margin:'10px 0 6px'}}>Tipo de pago</div>
+          <div style={{fontSize:'12px',color:'#36d406',margin:'10px 0 6px'}}>Tipo de pago</div>
           <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:'6px',marginBottom:'10px'}}>
             {['efectivo','credito','transferencia'].map(t => (
               <button key={t} onClick={() => setTipoPago(t)}
-                style={{padding:'8px',borderRadius:'6px',border: tipoPago===t ? '1px solid #FFD600' : '1px solid #ffffff30',background: tipoPago===t ? '#FFD60020' : 'transparent',color: tipoPago===t ? '#FFD600' : '#ffffffdd',fontSize:'11px',cursor:'pointer'}}>
+                style={{padding:'8px',borderRadius:'6px',border: tipoPago===t ? '1px solid #06b6d4' : '1px solid #334155',background: tipoPago===t ? '#0891b220' : 'transparent',color: tipoPago===t ? '#06b6d4' : '#94a3b8',fontSize:'11px',cursor:'pointer'}}>
                 {t === 'efectivo' ? '💵 Efectivo' : t === 'credito' ? '💳 Crédito' : '📱 Transfer.'}
               </button>
             ))}
           </div>
 
           <button onClick={confirmar}
-            style={{width:'100%',padding:'12px',borderRadius:'8px',border:'none',background: carrito.length > 0 ? '#FFD600' : '#ffffff20',fontSize:'14px',fontWeight:'500',cursor: carrito.length > 0 ? 'pointer' : 'default',color: carrito.length > 0 ? '#3D2B00' : '#ffffff50'}}>
+            style={{width:'100%',padding:'12px',borderRadius:'8px',border:'none',background: carrito.length > 0 ? 'linear-gradient(135deg,#0891b2,#06b6d4)' : '#334155',fontSize:'14px',fontWeight:'500',cursor: carrito.length > 0 ? 'pointer' : 'default',color: carrito.length > 0 ? '#fff' : '#64748b'}}>
             ✅ Confirmar venta — ${total.toFixed(2)}
           </button>
         </div>
