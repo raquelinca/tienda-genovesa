@@ -8,6 +8,8 @@ export default function Ventas() {
   const [tipoPago, setTipoPago] = useState('efectivo');
   const [mensaje, setMensaje] = useState('');
   const [montoRecibido, setMontoRecibido] = useState('');
+  const [tipoCliente, setTipoCliente] = useState('consumidor');
+  const [datosCliente, setDatosCliente] = useState({ nombre: '', cedula: '' });
 
   const cargarProductos = async () => {
     try {
@@ -44,9 +46,15 @@ export default function Ventas() {
     if (tipoPago === 'efectivo' && montoRecibido && parseFloat(montoRecibido) < total) {
       setMensaje('❌ El monto recibido es menor al total.'); return;
     }
+    if (tipoCliente === 'factura' && (!datosCliente.nombre.trim() || !datosCliente.cedula.trim())) {
+      setMensaje('❌ Ingresa el nombre y cédula/RUC del cliente.'); return;
+    }
     try {
       const res = await api.post('/ventas', {
         tipo_pago: tipoPago,
+        tipo_cliente: tipoCliente,
+        cliente_nombre: datosCliente.nombre,
+        cliente_cedula: datosCliente.cedula,
         items: carrito.map(i => ({
           producto_id: i.id,
           cantidad: i.cantidad,
@@ -57,6 +65,8 @@ export default function Ventas() {
         setMensaje(`✅ ¡Venta registrada! ${tipoPago === 'efectivo' && montoRecibido ? `Vuelto: $${vuelto.toFixed(2)}` : ''}`);
         setCarrito([]);
         setMontoRecibido('');
+        setDatosCliente({ nombre: '', cedula: '' });
+        setTipoCliente('consumidor');
         cargarProductos();
         setTimeout(() => setMensaje(''), 4000);
       }
@@ -94,7 +104,7 @@ export default function Ventas() {
             <p style={{color:'#999',fontSize:'13px'}}>No hay productos disponibles.</p>
           ) : (
             filtrados.map(p => (
-              <div key={p.id} style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'10px',borderRadius:'8px',border:'0.5px solid #e0e0e0',marginBottom:'6px',background:'#fff'}}>
+              <div key={p.id} style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'10px',borderRadius:'8px',border:'0.5px solid #e0e0e0',marginBottom:'6px'}}>
                 <div>
                   <div style={{fontSize:'13px',color:'#333',fontWeight:'500'}}>{p.nombre}</div>
                   <div style={{fontSize:'11px',color: p.stock_actual <= p.stock_minimo ? '#C62828' : '#666'}}>
@@ -150,8 +160,50 @@ export default function Ventas() {
             </div>
           </div>
 
+          {/* Tipo de cliente */}
+          <div style={{fontSize:'13px',color:'#1565C0',margin:'12px 0 6px',fontWeight:'500'}}>Tipo de cliente</div>
+          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'6px',marginBottom:'10px'}}>
+            <button onClick={() => { setTipoCliente('consumidor'); setDatosCliente({ nombre:'', cedula:'' }); }}
+              style={{padding:'8px',borderRadius:'6px',
+                border: tipoCliente==='consumidor' ? '1px solid #1565C0' : '1px solid #e0e0e0',
+                background: tipoCliente==='consumidor' ? '#E3F2FD' : '#fff',
+                color: tipoCliente==='consumidor' ? '#1565C0' : '#666',
+                fontSize:'12px',cursor:'pointer',fontWeight: tipoCliente==='consumidor' ? '500' : '400'}}>
+              👤 Consumidor Final
+            </button>
+            <button onClick={() => setTipoCliente('factura')}
+              style={{padding:'8px',borderRadius:'6px',
+                border: tipoCliente==='factura' ? '1px solid #1565C0' : '1px solid #e0e0e0',
+                background: tipoCliente==='factura' ? '#E3F2FD' : '#fff',
+                color: tipoCliente==='factura' ? '#1565C0' : '#666',
+                fontSize:'12px',cursor:'pointer',fontWeight: tipoCliente==='factura' ? '500' : '400'}}>
+              🧾 Con datos de factura
+            </button>
+          </div>
+
+          {/* Datos del cliente para factura */}
+          {tipoCliente === 'factura' && (
+            <div style={{background:'#F3F8FF',borderRadius:'8px',padding:'12px',marginBottom:'10px',border:'1px solid #BBDEFB'}}>
+              <div style={{fontSize:'13px',color:'#1565C0',fontWeight:'500',marginBottom:'10px'}}>📋 Datos para factura</div>
+              <div style={{marginBottom:'8px'}}>
+                <label style={{fontSize:'12px',color:'#1565C0',display:'block',marginBottom:'4px'}}>Nombre o Razón Social *</label>
+                <input value={datosCliente.nombre}
+                  onChange={e => setDatosCliente({...datosCliente, nombre: e.target.value.charAt(0).toUpperCase() + e.target.value.slice(1)})}
+                  placeholder="Ej: Juan Pérez"
+                  style={{width:'100%',padding:'8px 12px',borderRadius:'6px',border:'1px solid #BBDEFB',background:'#fff',color:'#333',fontSize:'13px',boxSizing:'border-box'}} />
+              </div>
+              <div>
+                <label style={{fontSize:'12px',color:'#1565C0',display:'block',marginBottom:'4px'}}>Cédula o RUC *</label>
+                <input value={datosCliente.cedula}
+                  onChange={e => { if(/^\d*$/.test(e.target.value)) setDatosCliente({...datosCliente, cedula: e.target.value}); }}
+                  placeholder="0000000000"
+                  style={{width:'100%',padding:'8px 12px',borderRadius:'6px',border:'1px solid #BBDEFB',background:'#fff',color:'#333',fontSize:'13px',boxSizing:'border-box'}} />
+              </div>
+            </div>
+          )}
+
           {/* Tipo de pago */}
-          <div style={{fontSize:'13px',color:'#1565C0',margin:'12px 0 6px',fontWeight:'500'}}>Tipo de pago</div>
+          <div style={{fontSize:'13px',color:'#1565C0',margin:'10px 0 6px',fontWeight:'500'}}>Tipo de pago</div>
           <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:'6px',marginBottom:'10px'}}>
             {['efectivo','credito','transferencia'].map(t => (
               <button key={t} onClick={() => { setTipoPago(t); setMontoRecibido(''); }}
@@ -165,7 +217,7 @@ export default function Ventas() {
             ))}
           </div>
 
-          {/* Cálculo de vuelto solo para efectivo */}
+          {/* Cálculo de vuelto */}
           {tipoPago === 'efectivo' && carrito.length > 0 && (
             <div style={{background:'#F3F8FF',borderRadius:'8px',padding:'12px',marginBottom:'10px',border:'1px solid #BBDEFB'}}>
               <label style={{fontSize:'13px',color:'#1565C0',display:'block',marginBottom:'6px',fontWeight:'500'}}>
@@ -181,9 +233,7 @@ export default function Ventas() {
               {montoRecibido && parseFloat(montoRecibido) >= total && (
                 <div style={{marginTop:'10px',background:'#E8F5E9',borderRadius:'6px',padding:'10px 12px',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
                   <span style={{fontSize:'14px',color:'#2E7D32',fontWeight:'500'}}>💰 Vuelto a dar:</span>
-                  <span style={{fontSize:'22px',fontWeight:'500',color:'#2E7D32'}}>
-                    ${vuelto.toFixed(2)}
-                  </span>
+                  <span style={{fontSize:'22px',fontWeight:'500',color:'#2E7D32'}}>${vuelto.toFixed(2)}</span>
                 </div>
               )}
               {montoRecibido && parseFloat(montoRecibido) < total && (
