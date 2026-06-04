@@ -12,6 +12,9 @@ app.use('/api/productos',require('./routes/productos.routes'));
 app.use('/api/ventas', require('./routes/ventas.routes'));  
 app.use('/api/auth', require('./routes/auth.routes'));
 app.use('/api/caja', require('./routes/caja.routes'));
+app.use('/api/cuentas-cobrar', require('./routes/cuentasCobrar.routes'));
+app.use('/api/clientes',       require('./routes/clientes.routes'));
+app.use('/api/categorias', require('./routes/categorias.routes'));
 
 app.use((err, req, res, next) => {
   console.error(err);
