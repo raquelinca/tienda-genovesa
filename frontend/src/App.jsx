@@ -4,6 +4,7 @@ import Inventario from './pages/Inventario';
 import Ventas from './pages/Ventas';
 import Caja from './pages/Caja';
 import Login from './pages/Login';
+import CuentasCobrar from './pages/CuentasCobrar';
 
 function App() {
   const [pantalla, setPantalla] = useState('dashboard');
@@ -50,10 +51,13 @@ function App() {
         </button>
         <button onClick={() => setPantalla('caja')}
           style={{background: pantalla==='caja' ? '#164e63' : 'transparent',color:'#ffffff',border:'none',borderRadius:'6px',padding:'6px 12px',fontSize:'12px',fontWeight:'500',cursor:'pointer'}}>
-          Caja
+          🏦 Caja
+        </button>
+        <button onClick={() => setPantalla('cxc')}
+          style={{background: pantalla==='cxc' ? '#164e63' : 'transparent',color:'#ffffff',border:'none',borderRadius:'6px',padding:'6px 12px',fontSize:'12px',fontWeight:'500',cursor:'pointer'}}>
+          💰 CxC
         </button>
 
-        {/* Usuario y cerrar sesión */}
         <div style={{marginLeft:'auto',display:'flex',alignItems:'center',gap:'12px'}}>
           <span style={{color:'#cffafe',fontSize:'12px'}}>👤 {usuario.nombre}</span>
           <button onClick={handleLogout}
@@ -67,6 +71,7 @@ function App() {
       {pantalla === 'inventario' && <Inventario />}
       {pantalla === 'ventas'     && <Ventas />}
       {pantalla === 'caja'       && <Caja />}
+      {pantalla === 'cxc'        && <CuentasCobrar />}
     </div>
   );
 }
