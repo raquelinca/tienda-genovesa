@@ -5,6 +5,7 @@ import Ventas from './pages/Ventas';
 import Caja from './pages/Caja';
 import Login from './pages/Login';
 import CuentasCobrar from './pages/CuentasCobrar';
+import CuentasPagar from './pages/CuentasPagar';
 
 function App() {
   const [pantalla, setPantalla] = useState('dashboard');
@@ -27,7 +28,7 @@ function App() {
   if (!usuario) return <Login onLogin={handleLogin} />;
 
   return (
-    <div>
+     <div style={{width:'100%',minHeight:'100vh'}}>
       <div style={{background:'linear-gradient(135deg,#0891b2,#06b6d4)',padding:'0 20px',display:'flex',alignItems:'center',gap:'6px',height:'50px',boxShadow:'0 2px 8px #0891b240'}}>
         <div style={{display:'flex',alignItems:'center',gap:'8px',marginRight:'20px'}}>
           <div style={{background:'#164e63',borderRadius:'8px',width:'32px',height:'32px',display:'flex',alignItems:'center',justifyContent:'center',fontSize:'18px'}}>🛒</div>
@@ -58,6 +59,11 @@ function App() {
           💰 CxC
         </button>
 
+        <button onClick={() => setPantalla('cxp')}
+  style={{background: pantalla==='cxp' ? '#164e63' : 'transparent',color:'#ffffff',border:'none',borderRadius:'6px',padding:'6px 12px',fontSize:'12px',fontWeight:'500',cursor:'pointer'}}>
+  🏪 CxP
+</button>
+
         <div style={{marginLeft:'auto',display:'flex',alignItems:'center',gap:'12px'}}>
           <span style={{color:'#cffafe',fontSize:'12px'}}>👤 {usuario.nombre}</span>
           <button onClick={handleLogout}
@@ -72,6 +78,7 @@ function App() {
       {pantalla === 'ventas'     && <Ventas />}
       {pantalla === 'caja'       && <Caja />}
       {pantalla === 'cxc'        && <CuentasCobrar />}
+      {pantalla === 'cxp' && <CuentasPagar />}
     </div>
   );
 }

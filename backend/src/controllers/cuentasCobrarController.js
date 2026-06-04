@@ -89,7 +89,7 @@ const crearCliente = async (req, res) => {
     const { nombre, cedula, telefono } = req.body;
     await db.query(
       `INSERT INTO clientes (nombre, cedula, telefono) VALUES (?, ?, ?)`,
-      [nombre, cedula || '', telefono || '']
+     [nombre.charAt(0).toUpperCase() + nombre.slice(1).toLowerCase(), cedula || '', telefono || '']
     );
     res.json({ ok: true });
   } catch (err) {

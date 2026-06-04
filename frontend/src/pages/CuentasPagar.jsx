@@ -1,73 +1,94 @@
 import { useEffect, useState } from 'react';
 import { api } from '../services/api';
 
-export default function CuentasCobrar() {
+export default function CuentasPagar() {
   const [cuentas, setCuentas] = useState([]);
-  const [clientes, setClientes] = useState([]);
+  const [proveedores, setProveedores] = useState([]);
   const [mostrarForm, setMostrarForm] = useState(false);
-  const [mostrarFormCliente, setMostrarFormCliente] = useState(false);
+  const [mostrarFormProveedor, setMostrarFormProveedor] = useState(false);
+  const [mostrarListaProveedores, setMostrarListaProveedores] = useState(false);
   const [mensaje, setMensaje] = useState('');
   const [filtroEstado, setFiltroEstado] = useState('todas');
   const [editId, setEditId] = useState(null);
-  const [form, setForm] = useState({ cliente_id: '', monto_total: '', vencimiento: '' });
-  const [formCliente, setFormCliente] = useState({ nombre: '', cedula: '', telefono: '' });
+  const [editProveedorId, setEditProveedorId] = useState(null);
+  const [form, setForm] = useState({ proveedor_id: '', monto_total: '', vencimiento: '' });
+  const [formProveedor, setFormProveedor] = useState({ nombre: '', ruc: '', telefono: '' });
 
   const cargar = async () => {
     try {
-      const c = await api.get('/cuentas-cobrar');
+      const c = await api.get('/cuentas-pagar');
       if (c.ok && Array.isArray(c.data)) setCuentas(c.data);
-      const cl = await api.get('/clientes');
-      if (cl.ok && Array.isArray(cl.data)) setClientes(cl.data);
+      const p = await api.get('/proveedores');
+      if (p.ok && Array.isArray(p.data)) setProveedores(p.data);
     } catch { setCuentas([]); }
   };
 
   useEffect(() => { cargar(); }, []);
 
   const guardar = async () => {
-    if (!form.cliente_id || !form.monto_total || !form.vencimiento) {
+    if (!form.proveedor_id || !form.monto_total || !form.vencimiento) {
       setMensaje('⚠️ Completa todos los campos.'); return;
     }
-    const datos = { cliente_id: parseInt(form.cliente_id), monto_total: parseFloat(form.monto_total), vencimiento: form.vencimiento };
-    const res = editId ? await api.put(`/cuentas-cobrar/${editId}`, datos) : await api.post('/cuentas-cobrar', datos);
+    const datos = { proveedor_id: parseInt(form.proveedor_id), monto_total: parseFloat(form.monto_total), vencimiento: form.vencimiento };
+    const res = editId ? await api.put(`/cuentas-pagar/${editId}`, datos) : await api.post('/cuentas-pagar', datos);
     if (res.ok) {
       setMensaje('✅ Cuenta guardada.');
-      setForm({ cliente_id: '', monto_total: '', vencimiento: '' });
+      setForm({ proveedor_id: '', monto_total: '', vencimiento: '' });
       setMostrarForm(false); setEditId(null); cargar();
     }
     setTimeout(() => setMensaje(''), 3000);
   };
 
   const editar = (c) => {
-    setForm({ cliente_id: c.cliente_id, monto_total: c.monto_total, vencimiento: c.vencimiento?.split('T')[0] });
+    setForm({ proveedor_id: c.proveedor_id, monto_total: c.monto_total, vencimiento: c.vencimiento?.split('T')[0] });
     setEditId(c.id); setMostrarForm(true);
   };
 
   const eliminar = async (id) => {
     if (!confirm('¿Eliminar esta cuenta?')) return;
-    const res = await api.delete(`/cuentas-cobrar/${id}`);
+    const res = await api.delete(`/cuentas-pagar/${id}`);
     if (res.ok) { setMensaje('✅ Cuenta eliminada.'); cargar(); }
     setTimeout(() => setMensaje(''), 3000);
   };
 
   const abonar = async (id, saldo) => {
-    const monto = prompt(`¿Cuánto deseas abonar? (Saldo: $${saldo})`);
+    const monto = prompt(`¿Cuánto deseas pagar? (Saldo: $${saldo})`);
     if (!monto || isNaN(monto) || parseFloat(monto) <= 0) return;
-    if (parseFloat(monto) > parseFloat(saldo)) { alert('El abono no puede ser mayor al saldo.'); return; }
-    const res = await api.post(`/cuentas-cobrar/${id}/abonar`, { monto: parseFloat(monto) });
-    if (res.ok) { setMensaje('✅ Abono registrado.'); cargar(); }
+    if (parseFloat(monto) > parseFloat(saldo)) { alert('El pago no puede ser mayor al saldo.'); return; }
+    const res = await api.post(`/cuentas-pagar/${id}/abonar`, { monto: parseFloat(monto) });
+    if (res.ok) { setMensaje('✅ Pago registrado.'); cargar(); }
     setTimeout(() => setMensaje(''), 3000);
   };
 
-  const guardarCliente = async () => {
-    if (!formCliente.nombre.trim()) { setMensaje('⚠️ El nombre es obligatorio.'); return; }
-    const res = await api.post('/clientes', formCliente);
+  const guardarProveedor = async () => {
+    if (!formProveedor.nombre.trim()) { setMensaje('⚠️ El nombre es obligatorio.'); return; }
+    const res = editProveedorId
+      ? await api.put(`/proveedores/${editProveedorId}`, formProveedor)
+      : await api.post('/proveedores', formProveedor);
     if (res.ok) {
-      setMensaje('✅ Cliente agregado.');
-      setFormCliente({ nombre: '', cedula: '', telefono: '' });
-      setMostrarFormCliente(false); cargar();
+      setMensaje('✅ Proveedor guardado.');
+      setFormProveedor({ nombre: '', ruc: '', telefono: '' });
+      setMostrarFormProveedor(false);
+      setEditProveedorId(null);
+      cargar();
     }
     setTimeout(() => setMensaje(''), 3000);
   };
+
+  const editarProveedor = (p) => {
+    setFormProveedor({ nombre: p.nombre, ruc: p.ruc || '', telefono: p.telefono || '' });
+    setEditProveedorId(p.id);
+    setMostrarFormProveedor(true);
+  };
+
+  const eliminarProveedor = async (id) => {
+    if (!confirm('¿Eliminar este proveedor?')) return;
+    const res = await api.delete(`/proveedores/${id}`);
+    if (res.ok) { setMensaje('✅ Proveedor eliminado.'); cargar(); }
+    setTimeout(() => setMensaje(''), 3000);
+  };
+
+  const formatearNombre = (val) => val.charAt(0).toUpperCase() + val.slice(1).toLowerCase();
 
   const filtradas = cuentas.filter(c => filtroEstado === 'todas' ? true : c.estado === filtroEstado);
   const totalPendiente = cuentas.filter(c => c.estado === 'pendiente').reduce((s, c) => s + parseFloat(c.saldo), 0);
@@ -87,15 +108,14 @@ export default function CuentasCobrar() {
   return (
     <div style={{background:'#0f172a',minHeight:'100vh',padding:'20px',color:'#fff',fontFamily:'sans-serif'}}>
 
-      {/* Header */}
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'20px'}}>
-        <h1 style={{color:'#06b6d4',fontSize:'22px',margin:0}}>💰 Cuentas por Cobrar</h1>
+        <h1 style={{color:'#06b6d4',fontSize:'22px',margin:0}}>🏪 Cuentas por Pagar</h1>
         <div style={{display:'flex',gap:'8px'}}>
-          <button onClick={() => setMostrarFormCliente(true)}
+          <button onClick={() => setMostrarListaProveedores(!mostrarListaProveedores)}
             style={{background:'#1e293b',border:'1px solid #0891b2',borderRadius:'8px',padding:'8px 12px',cursor:'pointer',color:'#06b6d4',fontSize:'12px'}}>
-            👤 Cliente
+            🏭 Proveedores
           </button>
-          <button onClick={() => { setForm({ cliente_id:'', monto_total:'', vencimiento:'' }); setEditId(null); setMostrarForm(true); }}
+          <button onClick={() => { setForm({ proveedor_id:'', monto_total:'', vencimiento:'' }); setEditId(null); setMostrarForm(true); }}
             style={{background:'linear-gradient(135deg,#0891b2,#06b6d4)',border:'none',borderRadius:'8px',padding:'8px 14px',fontWeight:'500',cursor:'pointer',color:'#fff',fontSize:'12px'}}>
             + Nueva cuenta
           </button>
@@ -105,7 +125,7 @@ export default function CuentasCobrar() {
       {/* Resumen */}
       <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:'12px',marginBottom:'20px'}}>
         <div style={{background:'#1e293b',borderRadius:'12px',padding:'16px',border:'1px solid #fb923c40'}}>
-          <div style={{fontSize:'11px',color:'#94a3b8',marginBottom:'4px'}}>Total pendiente</div>
+          <div style={{fontSize:'11px',color:'#94a3b8',marginBottom:'4px'}}>Total por pagar</div>
           <div style={{fontSize:'24px',color:'#fb923c',fontWeight:'500'}}>${totalPendiente.toFixed(2)}</div>
         </div>
         <div style={{background:'#1e293b',borderRadius:'12px',padding:'16px',border:'1px solid #ff444440'}}>
@@ -127,42 +147,65 @@ export default function CuentasCobrar() {
         </div>
       )}
 
-      {/* Formulario nuevo cliente */}
-      {mostrarFormCliente && (
+      {/* Lista de proveedores */}
+      {mostrarListaProveedores && (
         <div style={{background:'#1e293b',border:'1px solid #0891b240',borderRadius:'12px',padding:'20px',marginBottom:'16px'}}>
-          <h2 style={{color:'#06b6d4',fontSize:'16px',marginBottom:'14px'}}>👤 Nuevo cliente</h2>
+          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'14px'}}>
+            <h2 style={{color:'#06b6d4',fontSize:'15px',margin:0}}>🏭 Gestión de Proveedores</h2>
+            <button onClick={() => { setFormProveedor({ nombre:'', ruc:'', telefono:'' }); setEditProveedorId(null); setMostrarFormProveedor(true); }}
+              style={{background:'linear-gradient(135deg,#0891b2,#06b6d4)',border:'none',borderRadius:'6px',padding:'6px 12px',color:'#fff',cursor:'pointer',fontSize:'12px'}}>
+              + Nuevo proveedor
+            </button>
+          </div>
+          <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(250px,1fr))',gap:'8px'}}>
+            {proveedores.map(p => (
+              <div key={p.id} style={{background:'#0f172a',borderRadius:'8px',padding:'10px 12px',border:'1px solid #334155',display:'flex',alignItems:'center',gap:'8px'}}>
+                <div style={{flex:1}}>
+                  <div style={{fontSize:'13px',color:'#e2e8f0',fontWeight:'500'}}>{p.nombre}</div>
+                  <div style={{fontSize:'11px',color:'#64748b'}}>{p.ruc || 'Sin RUC'} {p.telefono ? `· ${p.telefono}` : ''}</div>
+                </div>
+                <button onClick={() => editarProveedor(p)}
+                  style={{background:'transparent',border:'none',color:'#06b6d4',cursor:'pointer',fontSize:'14px',padding:'0'}}>✏️</button>
+                <button onClick={() => eliminarProveedor(p.id)}
+                  style={{background:'transparent',border:'none',color:'#ff4444',cursor:'pointer',fontSize:'14px',padding:'0'}}>🗑️</button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Formulario proveedor */}
+      {mostrarFormProveedor && (
+        <div style={{background:'#1e293b',border:'1px solid #0891b240',borderRadius:'12px',padding:'20px',marginBottom:'16px'}}>
+          <h2 style={{color:'#06b6d4',fontSize:'16px',marginBottom:'14px'}}>{editProveedorId ? '✏️ Editar proveedor' : '🏭 Nuevo proveedor'}</h2>
           <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:'12px',marginBottom:'14px'}}>
             <div>
               <label style={{fontSize:'12px',color:'#06b6d4',display:'block',marginBottom:'6px'}}>Nombre *</label>
-              <input value={formCliente.nombre}
-               onChange={e => {
-  const val = e.target.value;
-  const formateado = val.charAt(0).toUpperCase() + val.slice(1).toLowerCase();
-  setFormCliente({...formCliente, nombre: formateado});
-}}
-                placeholder="Ej: Juan Pérez" style={inputStyle} />
+              <input value={formProveedor.nombre}
+                onChange={e => setFormProveedor({...formProveedor, nombre: formatearNombre(e.target.value)})}
+                placeholder="Ej: Distribuidora Xyz" style={inputStyle} />
             </div>
             <div>
-              <label style={{fontSize:'12px',color:'#06b6d4',display:'block',marginBottom:'6px'}}>Cédula</label>
-              <input value={formCliente.cedula}
-                onChange={e => { if(/^\d*$/.test(e.target.value)) setFormCliente({...formCliente, cedula: e.target.value}); }}
-                placeholder="0000000000" style={inputStyle} />
+              <label style={{fontSize:'12px',color:'#06b6d4',display:'block',marginBottom:'6px'}}>RUC</label>
+              <input value={formProveedor.ruc}
+                onChange={e => { if(/^\d*$/.test(e.target.value)) setFormProveedor({...formProveedor, ruc: e.target.value}); }}
+                placeholder="0000000000001" style={inputStyle} />
             </div>
             <div>
               <label style={{fontSize:'12px',color:'#06b6d4',display:'block',marginBottom:'6px'}}>Teléfono</label>
-              <input value={formCliente.telefono}
-                onChange={e => { if(/^\d*$/.test(e.target.value)) setFormCliente({...formCliente, telefono: e.target.value}); }}
+              <input value={formProveedor.telefono}
+                onChange={e => { if(/^\d*$/.test(e.target.value)) setFormProveedor({...formProveedor, telefono: e.target.value}); }}
                 placeholder="0991234567" style={inputStyle} />
             </div>
           </div>
           <div style={{display:'flex',gap:'8px',justifyContent:'flex-end'}}>
-            <button onClick={() => setMostrarFormCliente(false)}
+            <button onClick={() => { setMostrarFormProveedor(false); setEditProveedorId(null); }}
               style={{padding:'8px 16px',borderRadius:'6px',border:'1px solid #334155',background:'transparent',color:'#e2e8f0',cursor:'pointer'}}>
               Cancelar
             </button>
-            <button onClick={guardarCliente}
+            <button onClick={guardarProveedor}
               style={{padding:'8px 16px',borderRadius:'6px',border:'none',background:'linear-gradient(135deg,#0891b2,#06b6d4)',color:'#fff',fontWeight:'500',cursor:'pointer'}}>
-              💾 Guardar cliente
+              💾 Guardar proveedor
             </button>
           </div>
         </div>
@@ -171,13 +214,13 @@ export default function CuentasCobrar() {
       {/* Formulario cuenta */}
       {mostrarForm && (
         <div style={{background:'#1e293b',border:'1px solid #0891b240',borderRadius:'12px',padding:'20px',marginBottom:'16px'}}>
-          <h2 style={{color:'#06b6d4',fontSize:'16px',marginBottom:'14px'}}>{editId ? '✏️ Editar cuenta' : '➕ Nueva cuenta'}</h2>
+          <h2 style={{color:'#06b6d4',fontSize:'16px',marginBottom:'14px'}}>{editId ? '✏️ Editar cuenta' : '➕ Nueva cuenta por pagar'}</h2>
           <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:'12px',marginBottom:'14px'}}>
             <div>
-              <label style={{fontSize:'12px',color:'#06b6d4',display:'block',marginBottom:'6px'}}>Cliente *</label>
-              <select value={form.cliente_id} onChange={e => setForm({...form, cliente_id: e.target.value})} style={inputStyle}>
-                <option value="">Selecciona un cliente</option>
-                {clientes.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+              <label style={{fontSize:'12px',color:'#06b6d4',display:'block',marginBottom:'6px'}}>Proveedor *</label>
+              <select value={form.proveedor_id} onChange={e => setForm({...form, proveedor_id: e.target.value})} style={inputStyle}>
+                <option value="">Selecciona un proveedor</option>
+                {proveedores.map(p => <option key={p.id} value={p.id}>{p.nombre}</option>)}
               </select>
             </div>
             <div>
@@ -221,7 +264,7 @@ export default function CuentasCobrar() {
         <table style={{width:'100%',borderCollapse:'collapse',fontSize:'12px'}}>
           <thead>
             <tr style={{background:'#1e293b'}}>
-              {['Cliente','Total','Pagado','Saldo','Vence','Estado','Acciones'].map(h => (
+              {['Proveedor','Total','Pagado','Saldo','Vence','Estado','Acciones'].map(h => (
                 <th key={h} style={{padding:'10px 8px',textAlign:'left',color:'#06b6d4',borderBottom:'2px solid #0891b2',whiteSpace:'nowrap'}}>{h}</th>
               ))}
             </tr>
@@ -232,7 +275,7 @@ export default function CuentasCobrar() {
             ) : (
               filtradas.map(c => (
                 <tr key={c.id} style={{borderBottom:'1px solid #1e293b'}}>
-                  <td style={{padding:'10px 8px',color:'#e2e8f0',fontWeight:'500'}}>{c.cliente_nombre}</td>
+                  <td style={{padding:'10px 8px',color:'#e2e8f0',fontWeight:'500'}}>{c.proveedor_nombre}</td>
                   <td style={{padding:'10px 8px',color:'#e2e8f0'}}>${parseFloat(c.monto_total).toFixed(2)}</td>
                   <td style={{padding:'10px 8px',color:'#00C853'}}>${parseFloat(c.monto_pagado).toFixed(2)}</td>
                   <td style={{padding:'10px 8px',color:'#fb923c',fontWeight:'500'}}>${parseFloat(c.saldo).toFixed(2)}</td>
@@ -248,7 +291,7 @@ export default function CuentasCobrar() {
                     <div style={{display:'flex',gap:'4px'}}>
                       {c.estado !== 'pagada' && (
                         <button onClick={() => abonar(c.id, c.saldo)}
-                          style={{padding:'3px 8px',borderRadius:'5px',border:'1px solid #06b6d4',background:'transparent',color:'#06b6d4',cursor:'pointer',fontSize:'11px',whiteSpace:'nowrap'}}>
+                          style={{padding:'3px 8px',borderRadius:'5px',border:'1px solid #06b6d4',background:'transparent',color:'#06b6d4',cursor:'pointer',fontSize:'11px'}}>
                           💵
                         </button>
                       )}
