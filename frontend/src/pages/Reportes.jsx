@@ -56,7 +56,7 @@ export default function Reportes() {
       {/* Filtros */}
       <div style={{background:'#fff',borderRadius:'12px',padding:'20px',border:'0.5px solid #e0e0e0',boxShadow:'0 1px 4px #00000010',marginBottom:'20px'}}>
         <h2 style={{color:'#1565C0',fontSize:'15px',marginBottom:'16px'}}>🔍 Filtros de búsqueda</h2>
-        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr 1fr',gap:'12px'}}>
+        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr 1fr',gap:'12px',marginBottom:'12px'}}>
           <div>
             <label style={{fontSize:'12px',color:'#1565C0',display:'block',marginBottom:'4px'}}>Fecha inicio</label>
             <input type="date" value={fechaInicio}
@@ -88,7 +88,15 @@ export default function Reportes() {
             </select>
           </div>
         </div>
-        <div style={{display:'flex',gap:'8px',marginTop:'12px'}}>
+        <div style={{display:'flex',gap:'8px',marginTop:'8px'}}>
+          <button onClick={() => window.open('http://localhost:3001/api/reportes/exportar-excel', '_blank')}
+            style={{padding:'8px 16px',borderRadius:'6px',border:'none',background:'#2E7D32',color:'#fff',cursor:'pointer',fontSize:'13px',fontWeight:'500'}}>
+            📥 Exportar Excel
+          </button>
+          <button onClick={() => window.open('http://localhost:3001/api/reportes/exportar-pdf', '_blank')}
+            style={{padding:'8px 16px',borderRadius:'6px',border:'none',background:'#C62828',color:'#fff',cursor:'pointer',fontSize:'13px',fontWeight:'500'}}>
+            📄 Exportar PDF
+          </button>
           <button onClick={() => { setFechaInicio(''); setFechaFin(''); setFiltroCategoria('todas'); setFiltroTipoPago('todos'); }}
             style={{padding:'8px 16px',borderRadius:'6px',border:'1px solid #e0e0e0',background:'#fff',color:'#666',cursor:'pointer',fontSize:'13px'}}>
             🔄 Limpiar filtros
@@ -162,7 +170,7 @@ export default function Reportes() {
         </div>
       </div>
 
-      {/* Tabla de inventario filtrado */}
+      {/* Tabla de inventario */}
       <div style={{background:'#fff',borderRadius:'12px',border:'0.5px solid #e0e0e0',boxShadow:'0 1px 4px #00000010'}}>
         <div style={{padding:'16px',borderBottom:'1px solid #E3F2FD'}}>
           <h2 style={{color:'#1565C0',fontSize:'15px',margin:0}}>📦 Inventario por categoría</h2>
