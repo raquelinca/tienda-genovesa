@@ -4,6 +4,7 @@ import Inventario from './pages/Inventario';
 import Ventas from './pages/Ventas';
 import Caja from './pages/Caja';
 import Login from './pages/Login';
+import Reportes from './pages/Reportes';
 
 function App() {
   const [pantalla, setPantalla] = useState('dashboard');
