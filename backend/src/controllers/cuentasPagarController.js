@@ -56,21 +56,58 @@ const eliminarCuenta = async (req, res) => {
 };
 
 const abonar = async (req, res) => {
+  const conn = await db.getConnection();
   try {
-    const { monto } = req.body;
+    await conn.beginTransaction();
     const { id } = req.params;
-    const [rows] = await db.query(`SELECT * FROM cuentas_pagar WHERE id=?`, [id]);
+    const monto = parseFloat(req.body.monto);
+
+    if (!monto || monto <= 0) {
+      await conn.rollback();
+      return res.status(400).json({ ok: false, mensaje: 'El monto del pago debe ser mayor a 0.' });
+    }
+
+    const [rows] = await conn.query(
+      `SELECT cp.*, p.nombre AS proveedor_nombre
+       FROM cuentas_pagar cp JOIN proveedores p ON cp.proveedor_id = p.id
+       WHERE cp.id = ?`, [id]);
+    if (rows.length === 0) {
+      await conn.rollback();
+      return res.status(404).json({ ok: false, mensaje: 'Cuenta no encontrada.' });
+    }
     const cuenta = rows[0];
-    const nuevoSaldo = parseFloat(cuenta.saldo) - parseFloat(monto);
-    const nuevoPagado = parseFloat(cuenta.monto_pagado) + parseFloat(monto);
-    const nuevoEstado = nuevoSaldo <= 0 ? 'pagada' : 'pendiente';
-    await db.query(
+
+    if (monto > parseFloat(cuenta.saldo) + 0.005) {
+      await conn.rollback();
+      return res.status(400).json({ ok: false, mensaje: 'El pago no puede ser mayor al saldo pendiente.' });
+    }
+
+    const nuevoSaldo  = Math.max(parseFloat(cuenta.saldo) - monto, 0);
+    const nuevoPagado = parseFloat(cuenta.monto_pagado) + monto;
+    const nuevoEstado = nuevoSaldo <= 0.005 ? 'pagada' : 'pendiente';
+
+    await conn.query(
       `UPDATE cuentas_pagar SET monto_pagado=?, saldo=?, estado=? WHERE id=?`,
-      [nuevoPagado, Math.max(nuevoSaldo, 0), nuevoEstado, id]
-    );
-    res.json({ ok: true });
+      [nuevoPagado, nuevoSaldo, nuevoEstado, id]);
+
+    // EGRESO automático en la caja abierta (si hay una abierta)
+    let cajaRegistrada = false;
+    const [cajas] = await conn.query(
+      `SELECT id FROM caja WHERE estado='abierta' ORDER BY apertura DESC LIMIT 1`);
+    if (cajas.length > 0) {
+      await conn.query(
+        `INSERT INTO caja_movimientos (caja_id, tipo, descripcion, monto) VALUES (?, 'egreso', ?, ?)`,
+        [cajas[0].id, `Pago proveedor — ${cuenta.proveedor_nombre}`, monto]);
+      cajaRegistrada = true;
+    }
+
+    await conn.commit();
+    res.json({ ok: true, cajaRegistrada, estado: nuevoEstado });
   } catch (err) {
+    await conn.rollback();
     res.status(500).json({ ok: false, mensaje: err.message });
+  } finally {
+    conn.release();
   }
 };
 

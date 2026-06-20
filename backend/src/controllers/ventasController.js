@@ -1,15 +1,29 @@
 const db = require('../config/db');
 
 const crearVenta = async (req, res) => {
-  const { tipo_pago, items } = req.body;
+  const { tipo_pago, items, tipo_cliente, cliente_nombre, cliente_cedula, cliente_id } = req.body;
   const conn = await db.getConnection();
   try {
     await conn.beginTransaction();
 
+    const total = items.reduce((s, i) => s + i.precio_unitario * i.cantidad, 0);
+
+    // Crédito requiere un cliente registrado (para crear la cuenta por cobrar)
+    if (tipo_pago === 'credito' && !cliente_id && (!cliente_nombre || cliente_nombre === 'CONSUMIDOR FINAL')) {
+      await conn.rollback();
+      return res.status(400).json({ ok: false, mensaje: 'Para crédito: elige un cliente registrado o escribe el nombre de uno nuevo.' });
+    }
+
+    // Caja abierta (para enlazar la venta y registrar el ingreso)
+    const [cajas] = await conn.query(`SELECT id FROM caja WHERE estado='abierta' ORDER BY apertura DESC LIMIT 1`);
+    const cajaId = cajas.length ? cajas[0].id : 1;
+
     const [venta] = await conn.query(
-      `INSERT INTO ventas (usuario_id, caja_id, total, tipo_pago)
-       VALUES (1, 1, ?, ?)`,
-      [items.reduce((s, i) => s + i.precio_unitario * i.cantidad, 0), tipo_pago]
+      `INSERT INTO ventas (usuario_id, caja_id, total, tipo_pago, tipo_cliente, cliente_nombre, cliente_cedula)
+       VALUES (1, ?, ?, ?, ?, ?, ?)`,
+      [cajaId, total, tipo_pago, tipo_cliente || 'consumidor',
+       cliente_nombre || 'CONSUMIDOR FINAL',
+       cliente_cedula || '9999999999999']
     );
 
     for (const item of items) {
@@ -25,8 +39,66 @@ const crearVenta = async (req, res) => {
       );
     }
 
+    let cuentaCreada = false;
+    let cajaRegistrada = false;
+
+    if (tipo_pago === 'credito') {
+      // Si no hay cliente registrado, se crea automáticamente con el nombre/cédula
+      let cid = cliente_id;
+      if (!cid) {
+        const ced = (cliente_cedula && cliente_cedula !== '9999999999999') ? cliente_cedula : '';
+        // Si la cédula ya existe, se usa ese cliente (no se duplica)
+        if (ced) {
+          const [existe] = await conn.query(`SELECT id FROM clientes WHERE cedula = ? LIMIT 1`, [ced]);
+          if (existe.length > 0) cid = existe[0].id;
+        }
+        if (!cid) {
+          const [nuevoCli] = await conn.query(
+            `INSERT INTO clientes (nombre, cedula, telefono) VALUES (?, ?, '')`,
+            [(cliente_nombre || '').toLowerCase().replace(/(^|\s)\S/g, t => t.toUpperCase()), ced]
+          );
+          cid = nuevoCli.insertId;
+        }
+      }
+      // ¿El cliente ya tiene una cuenta PENDIENTE? Si sí, se le suma; si no, se crea.
+      const [pendientes] = await conn.query(
+        `SELECT id, monto_total, saldo FROM cuentas_cobrar
+         WHERE cliente_id = ? AND estado = 'pendiente'
+         ORDER BY id DESC LIMIT 1`,
+        [cid]
+      );
+      if (pendientes.length > 0) {
+        // Sumar esta venta a la deuda existente (una sola cuenta que crece)
+        const cuenta = pendientes[0];
+        const nuevoTotal = parseFloat(cuenta.monto_total) + total;
+        const nuevoSaldo = parseFloat(cuenta.saldo) + total;
+        await conn.query(
+          `UPDATE cuentas_cobrar SET monto_total = ?, saldo = ? WHERE id = ?`,
+          [nuevoTotal, nuevoSaldo, cuenta.id]
+        );
+      } else {
+        // Primera deuda del cliente: crear la cuenta a 30 días
+        const venc = new Date();
+        venc.setDate(venc.getDate() + 30);
+        const vencimiento = venc.toISOString().slice(0, 10);
+        await conn.query(
+          `INSERT INTO cuentas_cobrar (cliente_id, monto_total, monto_pagado, saldo, vencimiento)
+           VALUES (?, ?, 0, ?, ?)`,
+          [cid, total, total, vencimiento]
+        );
+      }
+      cuentaCreada = true;
+    } else if (cajas.length > 0) {
+      // Efectivo / transferencia → ingreso automático en la caja abierta
+      await conn.query(
+        `INSERT INTO caja_movimientos (caja_id, tipo, descripcion, monto) VALUES (?, 'ingreso', ?, ?)`,
+        [cajaId, `Venta #${venta.insertId} (${tipo_pago})`, total]
+      );
+      cajaRegistrada = true;
+    }
+
     await conn.commit();
-    res.status(201).json({ ok: true, venta_id: venta.insertId });
+    res.status(201).json({ ok: true, venta_id: venta.insertId, cuentaCreada, cajaRegistrada });
   } catch (err) {
     await conn.rollback();
     res.status(500).json({ ok: false, mensaje: err.message });

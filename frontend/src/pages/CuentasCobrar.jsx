@@ -8,6 +8,9 @@ export default function CuentasCobrar() {
   const [mostrarFormCliente, setMostrarFormCliente] = useState(false);
   const [mensaje, setMensaje] = useState('');
   const [filtroEstado, setFiltroEstado] = useState('todas');
+  const [busqueda, setBusqueda] = useState('');
+  const [mesFiltro, setMesFiltro] = useState(() => new Date().toISOString().slice(0, 7));
+  const [todosMeses, setTodosMeses] = useState(false);
   const [editId, setEditId] = useState(null);
   const [form, setForm] = useState({ cliente_id: '', monto_total: '', vencimiento: '' });
   const [formCliente, setFormCliente] = useState({ nombre: '', cedula: '', telefono: '' });
@@ -54,8 +57,15 @@ export default function CuentasCobrar() {
     if (!monto || isNaN(monto) || parseFloat(monto) <= 0) return;
     if (parseFloat(monto) > parseFloat(saldo)) { alert('El abono no puede ser mayor al saldo.'); return; }
     const res = await api.post(`/cuentas-cobrar/${id}/abonar`, { monto: parseFloat(monto) });
-    if (res.ok) { setMensaje('✅ Abono registrado.'); cargar(); }
-    setTimeout(() => setMensaje(''), 3000);
+    if (res.ok) {
+      setMensaje(res.cajaRegistrada
+        ? '✅ Abono registrado y sumado a caja como INGRESO.'
+        : '✅ Abono registrado. ⚠️ No hay caja abierta, no se sumó a caja.');
+      cargar();
+    } else {
+      setMensaje('⚠️ ' + (res.mensaje || 'No se pudo registrar el abono.'));
+    }
+    setTimeout(() => setMensaje(''), 4000);
   };
 
   const guardarCliente = async () => {
@@ -65,11 +75,19 @@ export default function CuentasCobrar() {
       setMensaje('✅ Cliente agregado.');
       setFormCliente({ nombre: '', cedula: '', telefono: '' });
       setMostrarFormCliente(false); cargar();
+    } else {
+      setMensaje('⚠️ ' + (res.mensaje || 'No se pudo agregar el cliente.'));
     }
-    setTimeout(() => setMensaje(''), 3000);
+    setTimeout(() => setMensaje(''), 4000);
   };
 
-  const filtradas = cuentas.filter(c => filtroEstado === 'todas' ? true : c.estado === filtroEstado);
+  const filtradas = cuentas.filter(c => {
+    if (filtroEstado !== 'todas' && c.estado !== filtroEstado) return false;
+    if (busqueda && !String(c.cliente_nombre || '').toLowerCase().includes(busqueda.toLowerCase())) return false;
+    // Las deudas activas (pendiente/vencida) SIEMPRE se ven; el mes solo filtra las pagadas
+    if (!todosMeses && c.estado === 'pagada' && String(c.vencimiento).slice(0, 7) !== mesFiltro) return false;
+    return true;
+  });
   const totalPendiente = cuentas.filter(c => c.estado === 'pendiente').reduce((s, c) => s + parseFloat(c.saldo), 0);
 
   const inputStyle = {
@@ -137,7 +155,7 @@ export default function CuentasCobrar() {
             <div>
               <label style={{fontSize:'12px',color:'#1565C0',display:'block',marginBottom:'6px'}}>Nombre *</label>
               <input value={formCliente.nombre}
-                onChange={e => setFormCliente({...formCliente, nombre: e.target.value.charAt(0).toUpperCase() + e.target.value.slice(1).toLowerCase()})}
+                onChange={e => setFormCliente({...formCliente, nombre: e.target.value.toLowerCase().replace(/(^|\s)\S/g, t => t.toUpperCase())})}
                 placeholder="Ej: Juan Pérez" style={inputStyle} />
             </div>
             <div>
@@ -201,7 +219,7 @@ export default function CuentasCobrar() {
         </div>
       )}
 
-      <div style={{display:'flex',gap:'8px',marginBottom:'16px'}}>
+      <div style={{display:'flex',gap:'8px',marginBottom:'12px',flexWrap:'wrap'}}>
         {['todas','pendiente','pagada','vencida'].map(f => (
           <button key={f} onClick={() => setFiltroEstado(f)}
             style={{padding:'6px 14px',borderRadius:'20px',border:'none',fontSize:'12px',cursor:'pointer',
@@ -211,6 +229,22 @@ export default function CuentasCobrar() {
             {f.charAt(0).toUpperCase() + f.slice(1)}
           </button>
         ))}
+      </div>
+
+      <div style={{display:'flex',gap:'12px',marginBottom:'16px',flexWrap:'wrap',alignItems:'center'}}>
+        <label style={{fontSize:'12px',color:'#666',display:'flex',alignItems:'center',gap:'6px'}}>
+          📅 Mes:
+          <input type="month" value={mesFiltro} disabled={todosMeses}
+            onChange={e => setMesFiltro(e.target.value)}
+            style={{padding:'7px 10px',borderRadius:'6px',border:'1px solid #BBDEFB',background: todosMeses ? '#f0f0f0' : '#fff',color:'#333',fontSize:'13px'}} />
+        </label>
+        <label style={{fontSize:'12px',color:'#666',display:'flex',alignItems:'center',gap:'6px',cursor:'pointer'}}>
+          <input type="checkbox" checked={todosMeses} onChange={e => setTodosMeses(e.target.checked)} />
+          Ver todos los meses
+        </label>
+        <input placeholder="🔍 Buscar cliente..." value={busqueda}
+          onChange={e => setBusqueda(e.target.value)}
+          style={{flex:1,minWidth:'160px',padding:'8px 12px',borderRadius:'6px',border:'1px solid #BBDEFB',background:'#fff',color:'#333',fontSize:'13px',boxSizing:'border-box'}} />
       </div>
 
       <div style={{background:'#fff',borderRadius:'12px',border:'0.5px solid #e0e0e0',boxShadow:'0 1px 4px #00000010',overflowX:'auto'}}>
@@ -251,10 +285,6 @@ export default function CuentasCobrar() {
                       <button onClick={() => editar(c)}
                         style={{padding:'4px 10px',borderRadius:'5px',border:'1px solid #BBDEFB',background:'#fff',color:'#1565C0',cursor:'pointer',fontSize:'11px'}}>
                         ✏️
-                      </button>
-                      <button onClick={() => eliminar(c.id)}
-                        style={{padding:'4px 10px',borderRadius:'5px',border:'1px solid #FFCDD2',background:'#FFEBEE',color:'#C62828',cursor:'pointer',fontSize:'11px'}}>
-                        🗑️
                       </button>
                     </div>
                   </td>

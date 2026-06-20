@@ -10,6 +10,16 @@ export default function Ventas() {
   const [montoRecibido, setMontoRecibido] = useState('');
   const [tipoCliente, setTipoCliente] = useState('consumidor');
   const [datosCliente, setDatosCliente] = useState({ nombre: '', cedula: '' });
+  const [ultimaVentaId, setUltimaVentaId] = useState(null);
+  const [clientes, setClientes] = useState([]);
+  const [clienteId, setClienteId] = useState('');
+
+  const cargarClientes = async () => {
+    try {
+      const data = await api.get('/clientes');
+      if (data.ok && Array.isArray(data.data)) setClientes(data.data);
+    } catch { setClientes([]); }
+  };
 
   const cargarProductos = async () => {
     try {
@@ -18,7 +28,7 @@ export default function Ventas() {
     } catch { setProductos([]); }
   };
 
-  useEffect(() => { cargarProductos(); }, []);
+  useEffect(() => { cargarProductos(); cargarClientes(); }, []);
 
   const agregar = (p) => {
     setCarrito(prev => {
@@ -33,7 +43,12 @@ export default function Ventas() {
 
   const cambiarCantidad = (id, delta) => {
     setCarrito(prev => prev
-      .map(i => i.id === id ? {...i, cantidad: i.cantidad + delta} : i)
+      .map(i => {
+        if (i.id !== id) return i;
+        const nueva = i.cantidad + delta;
+        if (delta > 0 && nueva > i.stock_actual) return i; // no pasar del stock disponible
+        return { ...i, cantidad: nueva };
+      })
       .filter(i => i.cantidad > 0)
     );
   };
@@ -49,12 +64,17 @@ export default function Ventas() {
     if (tipoCliente === 'factura' && (!datosCliente.nombre.trim() || !datosCliente.cedula.trim())) {
       setMensaje('❌ Ingresa el nombre y cédula/RUC del cliente.'); return;
     }
+    if (tipoPago === 'credito') {
+      if (!clienteId) { setMensaje('❌ Para crédito, elige un cliente o "Cliente nuevo".'); return; }
+      if (clienteId === 'nuevo' && !datosCliente.nombre.trim()) { setMensaje('❌ Escribe el nombre del cliente nuevo.'); return; }
+    }
     try {
       const res = await api.post('/ventas', {
         tipo_pago: tipoPago,
         tipo_cliente: tipoCliente,
-        cliente_nombre: datosCliente.nombre,
-        cliente_cedula: datosCliente.cedula,
+        cliente_nombre: datosCliente.nombre || 'CONSUMIDOR FINAL',
+        cliente_cedula: datosCliente.cedula || '9999999999999',
+        cliente_id: (tipoPago === 'credito' && clienteId !== 'nuevo') ? parseInt(clienteId) : null,
         items: carrito.map(i => ({
           producto_id: i.id,
           cantidad: i.cantidad,
@@ -62,13 +82,19 @@ export default function Ventas() {
         }))
       });
       if (res.ok) {
-        setMensaje(`✅ ¡Venta registrada! ${tipoPago === 'efectivo' && montoRecibido ? `Vuelto: $${vuelto.toFixed(2)}` : ''}`);
+        setUltimaVentaId(res.venta_id);
+        let extra = '';
+        if (res.cuentaCreada) extra = ' Cuenta creada en C×C.';
+        else if (res.cajaRegistrada) extra = ' Sumado a caja.';
+        else if (tipoPago === 'efectivo' && montoRecibido) extra = ` Vuelto: $${vuelto.toFixed(2)}`;
+        setMensaje('✅ ¡Venta registrada!' + extra);
         setCarrito([]);
         setMontoRecibido('');
         setDatosCliente({ nombre: '', cedula: '' });
+        setClienteId('');
         setTipoCliente('consumidor');
         cargarProductos();
-        setTimeout(() => setMensaje(''), 4000);
+        setTimeout(() => { setMensaje(''); setUltimaVentaId(null); }, 8000);
       }
     } catch { setMensaje('❌ Error al registrar la venta'); }
   };
@@ -76,6 +102,20 @@ export default function Ventas() {
   const filtrados = productos.filter(p =>
     p.nombre.toLowerCase().includes(busqueda.toLowerCase()) && p.stock_actual > 0
   );
+
+  const enviarAlSRI = async (ventaId) => {
+    setMensaje('⏳ Firmando y enviando al SRI...');
+    try {
+      const res = await api.post(`/factura/enviar-sri/${ventaId}`, {});
+      if (res.ok) {
+        setMensaje('✅ Factura AUTORIZADA por el SRI. Clave: ' + res.claveAcceso);
+      } else {
+        setMensaje('❌ ' + (res.mensaje || 'No se pudo enviar al SRI.'));
+      }
+    } catch {
+      setMensaje('❌ Error de conexión al enviar al SRI.');
+    }
+  };
 
   return (
     <div style={{background:'#f8f9fa',minHeight:'100vh',padding:'20px',fontFamily:'sans-serif'}}>
@@ -85,8 +125,25 @@ export default function Ventas() {
         <div style={{background: mensaje.includes('❌') ? '#FFEBEE' : '#E8F5E9',
           border:`1px solid ${mensaje.includes('❌') ? '#FFCDD2' : '#C8E6C9'}`,
           borderRadius:'8px',padding:'12px',marginBottom:'16px',
-          color: mensaje.includes('❌') ? '#C62828' : '#2E7D32',fontSize:'14px',fontWeight:'500'}}>
-          {mensaje}
+          color: mensaje.includes('❌') ? '#C62828' : '#2E7D32',fontSize:'14px',fontWeight:'500',
+          display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+          <span>{mensaje}</span>
+          {ultimaVentaId && !mensaje.includes('❌') && (
+            <div style={{display:'flex',gap:'8px',marginLeft:'12px'}}>
+              <button onClick={() => window.open(`http://localhost:3001/api/factura/xml/${ultimaVentaId}`, '_blank')}
+                style={{background:'#1565C0',border:'none',borderRadius:'6px',padding:'8px 16px',color:'#fff',cursor:'pointer',fontSize:'13px',fontWeight:'500',whiteSpace:'nowrap'}}>
+                ⬇️ Descargar XML
+              </button>
+              <button onClick={() => window.open(`http://localhost:3001/api/factura/pdf/${ultimaVentaId}`, '_blank')}
+                style={{background:'#fff',border:'1px solid #1565C0',borderRadius:'6px',padding:'8px 16px',color:'#1565C0',cursor:'pointer',fontSize:'13px',fontWeight:'500',whiteSpace:'nowrap'}}>
+                🧾 Ver PDF
+              </button>
+              <button onClick={() => enviarAlSRI(ultimaVentaId)}
+                style={{background:'#2E7D32',border:'none',borderRadius:'6px',padding:'8px 16px',color:'#fff',cursor:'pointer',fontSize:'13px',fontWeight:'500',whiteSpace:'nowrap'}}>
+                📤 Firmar y enviar al SRI
+              </button>
+            </div>
+          )}
         </div>
       )}
 
@@ -140,8 +197,9 @@ export default function Ventas() {
                   <button onClick={() => cambiarCantidad(i.id, -1)}
                     style={{background:'#E3F2FD',border:'none',borderRadius:'4px',color:'#1565C0',width:'24px',height:'24px',cursor:'pointer',fontSize:'14px',fontWeight:'500'}}>-</button>
                   <span style={{fontSize:'13px',color:'#333',minWidth:'20px',textAlign:'center'}}>{i.cantidad}</span>
-                  <button onClick={() => cambiarCantidad(i.id, 1)}
-                    style={{background:'#E3F2FD',border:'none',borderRadius:'4px',color:'#1565C0',width:'24px',height:'24px',cursor:'pointer',fontSize:'14px',fontWeight:'500'}}>+</button>
+                  <button onClick={() => cambiarCantidad(i.id, 1)} disabled={i.cantidad >= i.stock_actual}
+                    title={i.cantidad >= i.stock_actual ? `Solo hay ${i.stock_actual} en stock` : ''}
+                    style={{background: i.cantidad >= i.stock_actual ? '#f0f0f0' : '#E3F2FD',border:'none',borderRadius:'4px',color: i.cantidad >= i.stock_actual ? '#bbb' : '#1565C0',width:'24px',height:'24px',cursor: i.cantidad >= i.stock_actual ? 'not-allowed' : 'pointer',fontSize:'14px',fontWeight:'500'}}>+</button>
                   <span style={{fontSize:'13px',color:'#1565C0',fontWeight:'500',minWidth:'50px',textAlign:'right'}}>${(parseFloat(i.precio_venta) * i.cantidad).toFixed(2)}</span>
                 </div>
               </div>
@@ -188,7 +246,7 @@ export default function Ventas() {
               <div style={{marginBottom:'8px'}}>
                 <label style={{fontSize:'12px',color:'#1565C0',display:'block',marginBottom:'4px'}}>Nombre o Razón Social *</label>
                 <input value={datosCliente.nombre}
-                  onChange={e => setDatosCliente({...datosCliente, nombre: e.target.value.charAt(0).toUpperCase() + e.target.value.slice(1)})}
+                  onChange={e => setDatosCliente({...datosCliente, nombre: e.target.value.toLowerCase().replace(/(^|\s)\S/g, t => t.toUpperCase())})}
                   placeholder="Ej: Juan Pérez"
                   style={{width:'100%',padding:'8px 12px',borderRadius:'6px',border:'1px solid #BBDEFB',background:'#fff',color:'#333',fontSize:'13px',boxSizing:'border-box'}} />
               </div>
@@ -216,6 +274,35 @@ export default function Ventas() {
               </button>
             ))}
           </div>
+
+          {/* Cliente para crédito → se crea/actualiza cuenta en C×C */}
+          {tipoPago === 'credito' && (
+            <div style={{background:'#FFF8E1',borderRadius:'8px',padding:'12px',marginBottom:'10px',border:'1px solid #FFE082'}}>
+              <label style={{fontSize:'13px',color:'#E65100',display:'block',marginBottom:'6px',fontWeight:'500'}}>
+                💳 Cliente del crédito (se actualiza su cuenta en C×C)
+              </label>
+              <select value={clienteId} onChange={e => setClienteId(e.target.value)}
+                style={{width:'100%',padding:'10px 12px',borderRadius:'6px',border:'1px solid #FFE082',background:'#fff',color:'#333',fontSize:'14px',boxSizing:'border-box'}}>
+                <option value="">— Selecciona —</option>
+                <option value="nuevo">➕ Cliente nuevo (no registrado)</option>
+                {clientes.map(c => <option key={c.id} value={c.id}>{c.nombre}{c.cedula ? ` (${c.cedula})` : ''}</option>)}
+              </select>
+
+              {clienteId === 'nuevo' && (
+                <div style={{marginTop:'10px',display:'flex',flexDirection:'column',gap:'8px'}}>
+                  <input value={datosCliente.nombre}
+                    onChange={e => setDatosCliente({...datosCliente, nombre: e.target.value.toLowerCase().replace(/(^|\s)\S/g, t => t.toUpperCase())})}
+                    placeholder="Nombre del cliente nuevo *"
+                    style={{width:'100%',padding:'10px 12px',borderRadius:'6px',border:'1px solid #FFE082',background:'#fff',color:'#333',fontSize:'14px',boxSizing:'border-box'}} />
+                  <input value={datosCliente.cedula}
+                    onChange={e => setDatosCliente({...datosCliente, cedula: e.target.value})}
+                    placeholder="Cédula / RUC (opcional)"
+                    style={{width:'100%',padding:'10px 12px',borderRadius:'6px',border:'1px solid #FFE082',background:'#fff',color:'#333',fontSize:'14px',boxSizing:'border-box'}} />
+                  <p style={{fontSize:'11px',color:'#E65100',margin:0}}>Se registrará automáticamente y se le abrirá su cuenta.</p>
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Cálculo de vuelto */}
           {tipoPago === 'efectivo' && carrito.length > 0 && (

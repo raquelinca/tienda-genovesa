@@ -58,10 +58,21 @@ export default function Inventario() {
   };
 
   const agregarCategoria = async () => {
-    if (!nuevaCategoria.trim()) return;
-    const res = await api.post('/categorias', { nombre: nuevaCategoria });
-    if (res.ok) { setNuevaCategoria(''); cargarCategorias(); setMensajeCat('✅ Categoría agregada.'); }
-    setTimeout(() => setMensajeCat(''), 2000);
+    if (!nuevaCategoria.trim()) { setMensajeCat('⚠️ Escribe un nombre de categoría.'); return; }
+    try {
+      const res = await api.post('/categorias', { nombre: nuevaCategoria });
+      if (res.ok) {
+        setNuevaCategoria('');
+        cargarCategorias();
+        setMensajeCat('✅ Categoría agregada.');
+      } else {
+        // Antes esto se ignoraba y el botón parecía "no funcionar"
+        setMensajeCat('❌ No se pudo agregar: ' + (res.mensaje || 'error del servidor.'));
+      }
+    } catch (e) {
+      setMensajeCat('❌ Error de conexión con el servidor.');
+    }
+    setTimeout(() => setMensajeCat(''), 4000);
   };
 
   const guardarEditCategoria = async (id) => {
@@ -77,9 +88,13 @@ export default function Inventario() {
   };
 
   const handleNombre = (e) => {
-    const val = e.target.value;
-    setForm({...form, nombre: val.replace(/\b\w/g, l => l.toUpperCase())});
-  };
+  const val = e.target.value;
+  const palabras = val.split(' ');
+  const formateado = palabras.map(p => 
+    p.length > 0 ? p.charAt(0).toUpperCase() + p.slice(1).toLowerCase() : ''
+  ).join(' ');
+  setForm({...form, nombre: formateado});
+};
 
   const handlePrecio = (campo, valor) => {
     if (/^\d*\.?\d*$/.test(valor)) setForm({...form, [campo]: valor});

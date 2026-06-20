@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<factura id="comprobante" version="1.1.0">
+  <infoTributaria>
+    <ambiente>1</ambiente>
+    <tipoEmision>1</tipoEmision>
+    <razonSocial>TIENDA GENOVESA</razonSocial>
+    <nombreComercial>TIENDA GENOVESA</nombreComercial>
+    <ruc>9999999999001</ruc>
+    <claveAcceso>1306202601999999999900110010010000000130000001311</claveAcceso>
+    <codDoc>01</codDoc>
+    <estab>001</estab>
+    <ptoEmi>001</ptoEmi>
+    <secuencial>000000013</secuencial>
+    <dirMatriz>QUITO - ECUADOR</dirMatriz>
+  </infoTributaria>
+  <infoFactura>
+    <fechaEmision>13/06/2026</fechaEmision>
+    <dirEstablecimiento>QUITO - ECUADOR</dirEstablecimiento>
+    <obligadoContabilidad>NO</obligadoContabilidad>
+    <tipoIdentificacionComprador>04</tipoIdentificacionComprador>
+    <razonSocialComprador>Josue garcia</razonSocialComprador>
+    <identificacionComprador>1722348776001</identificacionComprador>
+    <totalSinImpuestos>6.75</totalSinImpuestos>
+    <totalDescuento>0.00</totalDescuento>
+    <totalConImpuestos>
+      <totalImpuesto>
+        <codigo>2</codigo>
+        <codigoPorcentaje>4</codigoPorcentaje>
+        <baseImponible>6.75</baseImponible>
+        <valor>1.01</valor>
+      </totalImpuesto>
+    </totalConImpuestos>
+    <propina>0.00</propina>
+    <importeTotal>7.76</importeTotal>
+    <moneda>DOLAR</moneda>
+    <pagos>
+      <pago>
+        <formaPago>01</formaPago>
+        <total>7.76</total>
+      </pago>
+    </pagos>
+  </infoFactura>
+  <detalles>
+    <detalle>
+      <codigoPrincipal>1</codigoPrincipal>
+      <descripcion> Coca-Cola 600ml</descripcion>
+      <cantidad>9.00</cantidad>
+      <precioUnitario>0.75</precioUnitario>
+      <descuento>0.00</descuento>
+      <precioTotalSinImpuesto>6.75</precioTotalSinImpuesto>
+      <impuestos>
+        <impuesto>
+          <codigo>2</codigo>
+          <codigoPorcentaje>4</codigoPorcentaje>
+          <tarifa>15.00</tarifa>
+          <baseImponible>6.75</baseImponible>
+          <valor>1.01</valor>
+        </impuesto>
+      </impuestos>
+    </detalle>
+  </detalles>
+  <infoAdicional>
+    <campoAdicional nombre="Generado por">Sistema Tienda Genovesa</campoAdicional>
+  </infoAdicional>
+</factura>

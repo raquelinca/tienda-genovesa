@@ -1,4 +1,4 @@
- const db = require('../config/db');
+const db = require('../config/db');
 
 const getCategorias = async (req, res) => {
   try {
@@ -11,13 +11,17 @@ const getCategorias = async (req, res) => {
 
 const crearCategoria = async (req, res) => {
   try {
-    const { nombre } = req.body;
-    await db.query(
-      `INSERT INTO categorias (nombre) VALUES (?)`,
-      [nombre.toUpperCase()]
-    );
+    const nombre = (req.body.nombre || '').trim().toUpperCase();
+    if (!nombre) return res.status(400).json({ ok: false, mensaje: 'El nombre es obligatorio.' });
+    await db.query(`INSERT INTO categorias (nombre) VALUES (?)`, [nombre]);
     res.json({ ok: true });
   } catch (err) {
+    if (err.code === 'ER_DUP_ENTRY') {
+      return res.status(409).json({ ok: false, mensaje: 'Esa categoría ya existe.' });
+    }
+    if (err.code === 'ER_NO_SUCH_TABLE') {
+      return res.status(500).json({ ok: false, mensaje: 'La tabla "categorias" no existe en la base de datos.' });
+    }
     res.status(500).json({ ok: false, mensaje: err.message });
   }
 };

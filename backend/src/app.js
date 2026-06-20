@@ -18,6 +18,7 @@ app.use('/api/categorias',    require('./routes/categorias.routes'));
 app.use('/api/cuentas-pagar', require('./routes/cuentasPagar.routes'));
 app.use('/api/proveedores',   require('./routes/proveedores.routes'));
 app.use('/api/reportes',      require('./routes/reportes.routes'));
+app.use('/api/factura', require('./routes/factura.routes'));
 
 app.use((err, req, res, next) => {
   console.error(err);
