@@ -187,7 +187,7 @@ function construirFacturaXML(venta, detalles, iva = IVA_DEFECTO) {
   for (const l of lineas) {
     const det = dets.ele('detalle');
     det.ele('codigoPrincipal').txt(String(l.producto_id)).up();
-    det.ele('descripcion').txt(l.producto_nombre).up();
+    det.ele('descripcion').txt(String(l.producto_nombre || '').trim()).up();
     det.ele('cantidad').txt(f2(l.cantidad)).up();
     det.ele('precioUnitario').txt(f2(l.precio_unitario)).up();
     det.ele('descuento').txt('0.00').up();
@@ -219,6 +219,11 @@ function construirFacturaXML(venta, detalles, iva = IVA_DEFECTO) {
     secuencial,
     nombreArchivo: `${claveAcceso}.xml`,
     totales: { totalSinImpuestos, totalIva, importeTotal },
+    // Datos ya calculados, para que validarFacturaXML no tenga que re-parsear el XML.
+    ruc: EMISOR.ruc,
+    idCliente,
+    tipoIdCli,
+    cantidadDetalles: lineas.length,
   };
 }
 

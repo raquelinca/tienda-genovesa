@@ -139,13 +139,21 @@ const generarFacturaPDF = async (req, res) => {
 //  devuelve la autorización. Requiere firma .p12 configurada (ver .env).
 // ---------------------------------------------------------------------
 const { firmarYEnviar } = require('../utils/firmarYEnviar');
+const { validarFacturaXML } = require('../utils/validarFacturaXML');
 
 const enviarSRI = async (req, res) => {
   try {
     const data = await obtenerVenta(req.params.venta_id);
     if (!data) return res.status(404).json({ ok: false, mensaje: 'Venta no encontrada' });
 
-    const { xml, claveAcceso } = construirFacturaXML(data.venta, data.detalles);
+    const factura = construirFacturaXML(data.venta, data.detalles);
+
+    const validacion = validarFacturaXML(factura);
+    if (!validacion.ok) {
+      return res.status(400).json({ ok: false, paso: 'validacion', mensaje: 'La factura no pasó la validación previa a la firma.', errores: validacion.errores });
+    }
+
+    const { xml, claveAcceso } = factura;
     const resultado = await firmarYEnviar(xml, claveAcceso);
 
     if (!resultado.ok) {

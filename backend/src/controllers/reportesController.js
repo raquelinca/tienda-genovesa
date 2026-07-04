@@ -1,14 +1,83 @@
 const db = require('../config/db');
 const ExcelJS = require('exceljs');
 
+// WHERE de ventas (alias v) a partir de los filtros del query string.
+function filtroVentas(query) {
+  const cond = [];
+  const params = [];
+  if (query.desde) { cond.push('DATE(v.fecha) >= ?'); params.push(query.desde); }
+  if (query.hasta) { cond.push('DATE(v.fecha) <= ?'); params.push(query.hasta); }
+  const where = cond.length ? 'WHERE ' + cond.join(' AND ') : '';
+  return { where, params };
+}
+
+// WHERE de inventario (categoría)
+function filtroProductos(query) {
+  const cond = ['activo = 1'];
+  const params = [];
+  if (query.categoria && query.categoria !== 'todas') {
+    cond.push('categoria = ?'); params.push(query.categoria);
+  }
+  return { where: 'WHERE ' + cond.join(' AND '), params };
+}
+
+// WHERE de ventas + categoría del producto vendido (requiere join con detalle_venta/productos, alias p).
+function filtroVentasCategoria(query) {
+  const cond = [];
+  const params = [];
+  if (query.desde) { cond.push('DATE(v.fecha) >= ?'); params.push(query.desde); }
+  if (query.hasta) { cond.push('DATE(v.fecha) <= ?'); params.push(query.hasta); }
+  if (query.categoria && query.categoria !== 'todas') { cond.push('p.categoria = ?'); params.push(query.categoria); }
+  const where = cond.length ? 'WHERE ' + cond.join(' AND ') : '';
+  return { where, params };
+}
+
 const getVentasReporte = async (req, res) => {
   try {
+    const { categoria } = req.query;
+    if (categoria && categoria !== 'todas') {
+      // Con categoría: el total de cada venta se recorta a lo vendido de esa categoría.
+      const f = filtroVentasCategoria(req.query);
+      const [rows] = await db.query(`
+        SELECT v.id, v.tipo_pago, v.estado, v.fecha, SUM(dv.subtotal) AS total
+        FROM ventas v
+        JOIN detalle_venta dv ON dv.venta_id = v.id
+        JOIN productos p ON p.id = dv.producto_id
+        ${f.where}
+        GROUP BY v.id, v.tipo_pago, v.estado, v.fecha
+        ORDER BY v.fecha DESC
+      `, f.params);
+      return res.json({ ok: true, data: rows });
+    }
+    const fV = filtroVentas(req.query);
     const [rows] = await db.query(`
       SELECT v.id, v.total, v.tipo_pago, v.estado, v.fecha
       FROM ventas v
+      ${fV.where}
       ORDER BY v.fecha DESC
-      LIMIT 100
-    `);
+    `, fV.params);
+    res.json({ ok: true, data: rows });
+  } catch (err) {
+    res.status(500).json({ ok: false, mensaje: err.message });
+  }
+};
+
+// Productos más vendidos (por unidades), respetando fecha y categoría.
+const getProductosVendidos = async (req, res) => {
+  try {
+    const f = filtroVentasCategoria(req.query);
+    const [rows] = await db.query(`
+      SELECT p.nombre,
+             SUM(dv.cantidad)  AS unidades,
+             SUM(dv.subtotal)  AS total
+      FROM detalle_venta dv
+      JOIN productos p ON p.id = dv.producto_id
+      JOIN ventas    v ON v.id = dv.venta_id
+      ${f.where}
+      GROUP BY p.id, p.nombre
+      ORDER BY unidades DESC
+      LIMIT 10
+    `, f.params);
     res.json({ ok: true, data: rows });
   } catch (err) {
     res.status(500).json({ ok: false, mensaje: err.message });
@@ -17,14 +86,17 @@ const getVentasReporte = async (req, res) => {
 
 const exportarExcel = async (req, res) => {
   try {
+    const fV = filtroVentas(req.query);
+    const fP = filtroProductos(req.query);
+
     const [ventas] = await db.query(`
       SELECT v.id, v.total, v.tipo_pago, v.estado, v.fecha
-      FROM ventas v ORDER BY v.fecha DESC
-    `);
+      FROM ventas v ${fV.where} ORDER BY v.fecha DESC
+    `, fV.params);
     const [productos] = await db.query(`
       SELECT nombre, categoria, precio_venta, precio_compra, stock_actual, stock_minimo
-      FROM productos WHERE activo=1 ORDER BY nombre
-    `);
+      FROM productos ${fP.where} ORDER BY nombre
+    `, fP.params);
 
     const workbook = new ExcelJS.Workbook();
     workbook.creator = 'Tienda Genovesa';
@@ -111,14 +183,17 @@ const PDFDocument = require('pdfkit');
 
 const exportarPDF = async (req, res) => {
   try {
+    const fV = filtroVentas(req.query);
+    const fP = filtroProductos(req.query);
+
     const [ventas] = await db.query(`
       SELECT v.id, v.total, v.tipo_pago, v.estado, v.fecha
-      FROM ventas v ORDER BY v.fecha DESC LIMIT 50
-    `);
+      FROM ventas v ${fV.where} ORDER BY v.fecha DESC LIMIT 50
+    `, fV.params);
     const [productos] = await db.query(`
       SELECT nombre, categoria, precio_venta, stock_actual, stock_minimo
-      FROM productos WHERE activo=1 ORDER BY nombre
-    `);
+      FROM productos ${fP.where} ORDER BY nombre
+    `, fP.params);
 
     const doc = new PDFDocument({ margin: 40, size: 'A4' });
 
@@ -134,6 +209,15 @@ const exportarPDF = async (req, res) => {
       .text('Reporte General del Sistema', 40, 48);
     doc.fontSize(10)
       .text(`Generado: ${new Date().toLocaleDateString()} ${new Date().toLocaleTimeString()}`, 40, 62);
+
+    // Filtros aplicados
+    const filtrosTexto = [];
+    if (req.query.desde || req.query.hasta) filtrosTexto.push(`Período: ${req.query.desde || '...'} a ${req.query.hasta || '...'}`);
+    if (req.query.categoria && req.query.categoria !== 'todas') filtrosTexto.push(`Categoría: ${req.query.categoria}`);
+    if (filtrosTexto.length) {
+      doc.fillColor('#666666').fontSize(9).font('Helvetica-Oblique')
+        .text('Filtros aplicados: ' + filtrosTexto.join('   |   '), 40, 92);
+    }
 
     doc.moveDown(3);
 
@@ -224,4 +308,4 @@ const exportarPDF = async (req, res) => {
   }
 };
 
-module.exports = { getVentasReporte, exportarExcel, exportarPDF };
+module.exports = { getVentasReporte, getProductosVendidos, exportarExcel, exportarPDF };

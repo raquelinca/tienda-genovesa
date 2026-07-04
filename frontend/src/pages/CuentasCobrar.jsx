@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { Fragment, useEffect, useMemo, useState } from 'react';
 import { api } from '../services/api';
 
 export default function CuentasCobrar() {
@@ -9,22 +9,37 @@ export default function CuentasCobrar() {
   const [mensaje, setMensaje] = useState('');
   const [filtroEstado, setFiltroEstado] = useState('todas');
   const [busqueda, setBusqueda] = useState('');
-  const [mesFiltro, setMesFiltro] = useState(() => new Date().toISOString().slice(0, 7));
-  const [todosMeses, setTodosMeses] = useState(false);
+  const [fechaInicio, setFechaInicio] = useState('');
+  const [fechaFin, setFechaFin] = useState('');
   const [editId, setEditId] = useState(null);
   const [form, setForm] = useState({ cliente_id: '', monto_total: '', vencimiento: '' });
   const [formCliente, setFormCliente] = useState({ nombre: '', cedula: '', telefono: '' });
+  const [expandidos, setExpandidos] = useState(new Set());
+
+  const toggleExpandido = (clienteId) => {
+    setExpandidos(prev => {
+      const next = new Set(prev);
+      if (next.has(clienteId)) next.delete(clienteId); else next.add(clienteId);
+      return next;
+    });
+  };
 
   const cargar = async () => {
     try {
-      const c = await api.get('/cuentas-cobrar');
+      const params = new URLSearchParams();
+      if (fechaInicio) params.set('desde', fechaInicio);
+      if (fechaFin) params.set('hasta', fechaFin);
+      const qs = params.toString();
+      const c = await api.get(`/cuentas-cobrar${qs ? '?' + qs : ''}`);
       if (c.ok && Array.isArray(c.data)) setCuentas(c.data);
       const cl = await api.get('/clientes');
       if (cl.ok && Array.isArray(cl.data)) setClientes(cl.data);
     } catch { setCuentas([]); }
   };
 
-  useEffect(() => { cargar(); }, []);
+  useEffect(() => { cargar(); }, [fechaInicio, fechaFin]);
+
+  const limpiarFechas = () => { setFechaInicio(''); setFechaFin(''); };
 
   const guardar = async () => {
     if (!form.cliente_id || !form.monto_total || !form.vencimiento) {
@@ -72,7 +87,7 @@ export default function CuentasCobrar() {
     if (!formCliente.nombre.trim()) { setMensaje('⚠️ El nombre es obligatorio.'); return; }
     const res = await api.post('/clientes', formCliente);
     if (res.ok) {
-      setMensaje('✅ Cliente agregado.');
+      setMensaje(res.existente ? `ℹ️ ${res.mensaje}` : '✅ Cliente agregado.');
       setFormCliente({ nombre: '', cedula: '', telefono: '' });
       setMostrarFormCliente(false); cargar();
     } else {
@@ -81,14 +96,44 @@ export default function CuentasCobrar() {
     setTimeout(() => setMensaje(''), 4000);
   };
 
+  // El rango de fechas ya viene aplicado desde el backend (las pendientes/vencidas
+  // siempre se incluyen ahí; el rango solo restringe las pagadas). Acá solo queda
+  // el filtro por estado y la búsqueda de texto, que son puramente de UI.
   const filtradas = cuentas.filter(c => {
     if (filtroEstado !== 'todas' && c.estado !== filtroEstado) return false;
     if (busqueda && !String(c.cliente_nombre || '').toLowerCase().includes(busqueda.toLowerCase())) return false;
-    // Las deudas activas (pendiente/vencida) SIEMPRE se ven; el mes solo filtra las pagadas
-    if (!todosMeses && c.estado === 'pagada' && String(c.vencimiento).slice(0, 7) !== mesFiltro) return false;
     return true;
   });
   const totalPendiente = cuentas.filter(c => c.estado === 'pendiente').reduce((s, c) => s + parseFloat(c.saldo), 0);
+
+  // Una fila por cliente (no por cuenta): agrupa las cuentas ya filtradas.
+  // Las pendientes/vencidas se resumen en el encabezado; el historial de
+  // pagadas queda oculto hasta que se despliega la fila del cliente.
+  const grupos = useMemo(() => {
+    const map = new Map();
+    filtradas.forEach(c => {
+      if (!map.has(c.cliente_id)) map.set(c.cliente_id, { cliente_id: c.cliente_id, cliente_nombre: c.cliente_nombre, cuentas: [] });
+      map.get(c.cliente_id).cuentas.push(c);
+    });
+    const arr = [...map.values()].map(g => {
+      const activas = g.cuentas.filter(c => c.estado !== 'pagada');
+      const totalActivo = activas.reduce((s, c) => s + parseFloat(c.saldo), 0);
+      const tieneVencida = activas.some(c => c.estado === 'vencida');
+      const proximoVencimiento = activas.reduce((min, c) => (!min || new Date(c.vencimiento) < new Date(min)) ? c.vencimiento : min, null);
+      return {
+        ...g, totalActivo, tieneVencida, proximoVencimiento,
+        cantidadActivas: activas.length,
+        cantidadPagadas: g.cuentas.length - activas.length,
+      };
+    });
+    arr.sort((a, b) => {
+      if (a.proximoVencimiento && b.proximoVencimiento) return new Date(a.proximoVencimiento) - new Date(b.proximoVencimiento);
+      if (a.proximoVencimiento) return -1;
+      if (b.proximoVencimiento) return 1;
+      return a.cliente_nombre.localeCompare(b.cliente_nombre);
+    });
+    return arr;
+  }, [filtradas]);
 
   const inputStyle = {
     width:'100%', padding:'9px 12px', borderRadius:'6px',
@@ -233,15 +278,24 @@ export default function CuentasCobrar() {
 
       <div style={{display:'flex',gap:'12px',marginBottom:'16px',flexWrap:'wrap',alignItems:'center'}}>
         <label style={{fontSize:'12px',color:'#666',display:'flex',alignItems:'center',gap:'6px'}}>
-          📅 Mes:
-          <input type="month" value={mesFiltro} disabled={todosMeses}
-            onChange={e => setMesFiltro(e.target.value)}
-            style={{padding:'7px 10px',borderRadius:'6px',border:'1px solid #BBDEFB',background: todosMeses ? '#f0f0f0' : '#fff',color:'#333',fontSize:'13px'}} />
+          📅 Desde:
+          <input type="date" value={fechaInicio}
+            onChange={e => setFechaInicio(e.target.value)}
+            style={{padding:'7px 10px',borderRadius:'6px',border:'1px solid #BBDEFB',background:'#fff',color:'#333',fontSize:'13px'}} />
         </label>
-        <label style={{fontSize:'12px',color:'#666',display:'flex',alignItems:'center',gap:'6px',cursor:'pointer'}}>
-          <input type="checkbox" checked={todosMeses} onChange={e => setTodosMeses(e.target.checked)} />
-          Ver todos los meses
+        <label style={{fontSize:'12px',color:'#666',display:'flex',alignItems:'center',gap:'6px'}}>
+          Hasta:
+          <input type="date" value={fechaFin}
+            onChange={e => setFechaFin(e.target.value)}
+            style={{padding:'7px 10px',borderRadius:'6px',border:'1px solid #BBDEFB',background:'#fff',color:'#333',fontSize:'13px'}} />
         </label>
+        {(fechaInicio || fechaFin) && (
+          <button onClick={limpiarFechas}
+            style={{padding:'7px 12px',borderRadius:'6px',border:'1px solid #e0e0e0',background:'#fff',color:'#666',cursor:'pointer',fontSize:'12px'}}>
+            🔄 Limpiar fechas
+          </button>
+        )}
+        <span style={{fontSize:'11px',color:'#999'}}>Las cuentas pendientes/vencidas siempre se muestran; el rango solo filtra las pagadas.</span>
         <input placeholder="🔍 Buscar cliente..." value={busqueda}
           onChange={e => setBusqueda(e.target.value)}
           style={{flex:1,minWidth:'160px',padding:'8px 12px',borderRadius:'6px',border:'1px solid #BBDEFB',background:'#fff',color:'#333',fontSize:'13px',boxSizing:'border-box'}} />
@@ -257,39 +311,68 @@ export default function CuentasCobrar() {
             </tr>
           </thead>
           <tbody>
-            {filtradas.length === 0 ? (
+            {grupos.length === 0 ? (
               <tr><td colSpan={7} style={{padding:'20px',textAlign:'center',color:'#999'}}>No hay cuentas registradas.</td></tr>
             ) : (
-              filtradas.map(c => (
-                <tr key={c.id} style={{borderBottom:'0.5px solid #e0e0e0'}}>
-                  <td style={{padding:'12px 10px',color:'#333',fontWeight:'500'}}>{c.cliente_nombre}</td>
-                  <td style={{padding:'12px 10px',color:'#333'}}>${parseFloat(c.monto_total).toFixed(2)}</td>
-                  <td style={{padding:'12px 10px',color:'#2E7D32'}}>${parseFloat(c.monto_pagado).toFixed(2)}</td>
-                  <td style={{padding:'12px 10px',color:'#E65100',fontWeight:'500'}}>${parseFloat(c.saldo).toFixed(2)}</td>
-                  <td style={{padding:'12px 10px',color:'#666',whiteSpace:'nowrap'}}>{new Date(c.vencimiento).toLocaleDateString()}</td>
-                  <td style={{padding:'12px 10px'}}>
-                    <span style={{padding:'3px 10px',borderRadius:'20px',fontSize:'11px',fontWeight:'500',
-                      background: bgEstado(c.estado), color: colorEstado(c.estado),
-                      border:`1px solid ${colorEstado(c.estado)}30`}}>
-                      {c.estado}
-                    </span>
-                  </td>
-                  <td style={{padding:'12px 10px'}}>
-                    <div style={{display:'flex',gap:'4px'}}>
-                      {c.estado !== 'pagada' && (
-                        <button onClick={() => abonar(c.id, c.saldo)}
-                          style={{padding:'4px 10px',borderRadius:'5px',border:'1px solid #1565C0',background:'#E3F2FD',color:'#1565C0',cursor:'pointer',fontSize:'11px'}}>
-                          💵
-                        </button>
-                      )}
-                      <button onClick={() => editar(c)}
-                        style={{padding:'4px 10px',borderRadius:'5px',border:'1px solid #BBDEFB',background:'#fff',color:'#1565C0',cursor:'pointer',fontSize:'11px'}}>
-                        ✏️
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))
+              grupos.map(g => {
+                const abierto = expandidos.has(g.cliente_id);
+                const estadoGrupo = g.cantidadActivas === 0 ? 'pagada' : g.tieneVencida ? 'vencida' : 'pendiente';
+                return (
+                  <Fragment key={g.cliente_id}>
+                    <tr onClick={() => toggleExpandido(g.cliente_id)}
+                      style={{borderBottom:'0.5px solid #e0e0e0', background:'#F8FAFF', cursor:'pointer'}}>
+                      <td style={{padding:'12px 10px',color:'#1565C0',fontWeight:'500'}}>
+                        {abierto ? '▾' : '▸'} {g.cliente_nombre}
+                      </td>
+                      <td colSpan={2} style={{padding:'12px 10px',color:'#999',fontSize:'12px'}}>
+                        {g.cantidadActivas} activa{g.cantidadActivas !== 1 ? 's' : ''} · {g.cantidadPagadas} pagada{g.cantidadPagadas !== 1 ? 's' : ''}
+                      </td>
+                      <td style={{padding:'12px 10px',color:'#E65100',fontWeight:'500'}}>${g.totalActivo.toFixed(2)}</td>
+                      <td style={{padding:'12px 10px',color:'#666',whiteSpace:'nowrap'}}>
+                        {g.proximoVencimiento ? new Date(g.proximoVencimiento).toLocaleDateString() : '—'}
+                      </td>
+                      <td style={{padding:'12px 10px'}}>
+                        <span style={{padding:'3px 10px',borderRadius:'20px',fontSize:'11px',fontWeight:'500',
+                          background: bgEstado(estadoGrupo), color: colorEstado(estadoGrupo),
+                          border:`1px solid ${colorEstado(estadoGrupo)}30`}}>
+                          {estadoGrupo}
+                        </span>
+                      </td>
+                      <td style={{padding:'12px 10px',color:'#999',fontSize:'11px'}}>{abierto ? 'Ocultar' : 'Ver cuentas'}</td>
+                    </tr>
+                    {abierto && g.cuentas.map(c => (
+                      <tr key={c.id} style={{borderBottom:'0.5px solid #e0e0e0'}}>
+                        <td style={{padding:'10px 10px 10px 28px',color:'#999',fontSize:'12px'}}>↳ cuenta #{c.id}</td>
+                        <td style={{padding:'10px',color:'#333'}}>${parseFloat(c.monto_total).toFixed(2)}</td>
+                        <td style={{padding:'10px',color:'#2E7D32'}}>${parseFloat(c.monto_pagado).toFixed(2)}</td>
+                        <td style={{padding:'10px',color:'#E65100',fontWeight:'500'}}>${parseFloat(c.saldo).toFixed(2)}</td>
+                        <td style={{padding:'10px',color:'#666',whiteSpace:'nowrap'}}>{new Date(c.vencimiento).toLocaleDateString()}</td>
+                        <td style={{padding:'10px'}}>
+                          <span style={{padding:'3px 10px',borderRadius:'20px',fontSize:'11px',fontWeight:'500',
+                            background: bgEstado(c.estado), color: colorEstado(c.estado),
+                            border:`1px solid ${colorEstado(c.estado)}30`}}>
+                            {c.estado}
+                          </span>
+                        </td>
+                        <td style={{padding:'10px'}}>
+                          <div style={{display:'flex',gap:'4px'}}>
+                            {c.estado !== 'pagada' && (
+                              <button onClick={(e) => { e.stopPropagation(); abonar(c.id, c.saldo); }}
+                                style={{padding:'4px 10px',borderRadius:'5px',border:'1px solid #1565C0',background:'#E3F2FD',color:'#1565C0',cursor:'pointer',fontSize:'11px'}}>
+                                💵
+                              </button>
+                            )}
+                            <button onClick={(e) => { e.stopPropagation(); editar(c); }}
+                              style={{padding:'4px 10px',borderRadius:'5px',border:'1px solid #BBDEFB',background:'#fff',color:'#1565C0',cursor:'pointer',fontSize:'11px'}}>
+                              ✏️
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </Fragment>
+                );
+              })
             )}
           </tbody>
         </table>

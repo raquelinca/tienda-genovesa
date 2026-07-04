@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<factura id="comprobante" version="1.1.0">
+  <infoTributaria>
+    <ambiente>1</ambiente>
+    <tipoEmision>1</tipoEmision>
+    <razonSocial>TORO GALARZA FRANKLIN ANGEL</razonSocial>
+    <nombreComercial>TIENDA GENOVESA</nombreComercial>
+    <ruc>1719816520001</ruc>
+    <claveAcceso>0307202601171981652000110010010000000490000004910</claveAcceso>
+    <codDoc>01</codDoc>
+    <estab>001</estab>
+    <ptoEmi>001</ptoEmi>
+    <secuencial>000000049</secuencial>
+    <dirMatriz>QUITO - ECUADOR</dirMatriz>
+  </infoTributaria>
+  <infoFactura>
+    <fechaEmision>03/07/2026</fechaEmision>
+    <dirEstablecimiento>QUITO - ECUADOR</dirEstablecimiento>
+    <obligadoContabilidad>NO</obligadoContabilidad>
+    <tipoIdentificacionComprador>05</tipoIdentificacionComprador>
+    <razonSocialComprador>Raquel Inca</razonSocialComprador>
+    <identificacionComprador>1726582685</identificacionComprador>
+    <totalSinImpuestos>1.50</totalSinImpuestos>
+    <totalDescuento>0.00</totalDescuento>
+    <totalConImpuestos>
+      <totalImpuesto>
+        <codigo>2</codigo>
+        <codigoPorcentaje>4</codigoPorcentaje>
+        <baseImponible>1.50</baseImponible>
+        <valor>0.23</valor>
+      </totalImpuesto>
+    </totalConImpuestos>
+    <propina>0.00</propina>
+    <importeTotal>1.73</importeTotal>
+    <moneda>DOLAR</moneda>
+    <pagos>
+      <pago>
+        <formaPago>01</formaPago>
+        <total>1.73</total>
+      </pago>
+    </pagos>
+  </infoFactura>
+  <detalles>
+    <detalle>
+      <codigoPrincipal>1</codigoPrincipal>
+      <descripcion>Coca-Cola 600ml</descripcion>
+      <cantidad>2.00</cantidad>
+      <precioUnitario>0.75</precioUnitario>
+      <descuento>0.00</descuento>
+      <precioTotalSinImpuesto>1.50</precioTotalSinImpuesto>
+      <impuestos>
+        <impuesto>
+          <codigo>2</codigo>
+          <codigoPorcentaje>4</codigoPorcentaje>
+          <tarifa>15.00</tarifa>
+          <baseImponible>1.50</baseImponible>
+          <valor>0.23</valor>
+        </impuesto>
+      </impuestos>
+    </detalle>
+  </detalles>
+  <infoAdicional>
+    <campoAdicional nombre="Generado por">Sistema Tienda Genovesa</campoAdicional>
+  </infoAdicional>
+</factura>

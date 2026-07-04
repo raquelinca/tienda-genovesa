@@ -13,6 +13,7 @@ export default function Ventas() {
   const [ultimaVentaId, setUltimaVentaId] = useState(null);
   const [clientes, setClientes] = useState([]);
   const [clienteId, setClienteId] = useState('');
+  const [enviando, setEnviando] = useState(false);
 
   const cargarClientes = async () => {
     try {
@@ -57,7 +58,7 @@ export default function Ventas() {
   const vuelto = montoRecibido && parseFloat(montoRecibido) >= total ? parseFloat(montoRecibido) - total : 0;
 
   const confirmar = async () => {
-    if (carrito.length === 0) return;
+    if (carrito.length === 0 || enviando) return;
     if (tipoPago === 'efectivo' && montoRecibido && parseFloat(montoRecibido) < total) {
       setMensaje('❌ El monto recibido es menor al total.'); return;
     }
@@ -68,6 +69,7 @@ export default function Ventas() {
       if (!clienteId) { setMensaje('❌ Para crédito, elige un cliente o "Cliente nuevo".'); return; }
       if (clienteId === 'nuevo' && !datosCliente.nombre.trim()) { setMensaje('❌ Escribe el nombre del cliente nuevo.'); return; }
     }
+    setEnviando(true);
     try {
       const res = await api.post('/ventas', {
         tipo_pago: tipoPago,
@@ -94,9 +96,14 @@ export default function Ventas() {
         setClienteId('');
         setTipoCliente('consumidor');
         cargarProductos();
+        if (res.cuentaCreada) cargarClientes(); // si se creó un cliente nuevo, que aparezca ya en el selector
         setTimeout(() => { setMensaje(''); setUltimaVentaId(null); }, 8000);
+      } else {
+        setMensaje('❌ ' + (res.mensaje || 'No se pudo registrar la venta'));
+        cargarProductos(); // refresca el stock mostrado por si quedó desactualizado
       }
     } catch { setMensaje('❌ Error al registrar la venta'); }
+    finally { setEnviando(false); }
   };
 
   const filtrados = productos.filter(p =>
@@ -331,13 +338,13 @@ export default function Ventas() {
             </div>
           )}
 
-          <button onClick={confirmar}
+          <button onClick={confirmar} disabled={carrito.length === 0 || enviando}
             style={{width:'100%',padding:'13px',borderRadius:'8px',border:'none',
-              background: carrito.length > 0 ? '#1565C0' : '#e0e0e0',
+              background: carrito.length > 0 && !enviando ? '#1565C0' : '#e0e0e0',
               fontSize:'14px',fontWeight:'500',
-              cursor: carrito.length > 0 ? 'pointer' : 'default',
-              color: carrito.length > 0 ? '#fff' : '#999'}}>
-            ✅ Confirmar venta — ${total.toFixed(2)}
+              cursor: carrito.length > 0 && !enviando ? 'pointer' : 'default',
+              color: carrito.length > 0 && !enviando ? '#fff' : '#999'}}>
+            {enviando ? '⏳ Registrando...' : `✅ Confirmar venta — $${total.toFixed(2)}`}
           </button>
         </div>
       </div>

@@ -10,6 +10,9 @@ const getProductos = async (req, res) => {
 const crearProducto = async (req, res) => {
   const { nombre, categoria, precio_venta,
           precio_compra, stock_actual, stock_minimo } = req.body;
+  if ((stock_actual ?? 0) < 0 || (stock_minimo ?? 5) < 0) {
+    return res.status(400).json({ ok: false, mensaje: 'El stock no puede ser negativo.' });
+  }
   const [r] = await db.query(
     `INSERT INTO productos
      (nombre,categoria,precio_venta,precio_compra,stock_actual,stock_minimo)
@@ -23,6 +26,9 @@ const crearProducto = async (req, res) => {
 const actualizarProducto = async (req, res) => {
   const { nombre, categoria, precio_venta,
           precio_compra, stock_actual, stock_minimo } = req.body;
+  if (stock_actual < 0 || stock_minimo < 0) {
+    return res.status(400).json({ ok: false, mensaje: 'El stock no puede ser negativo.' });
+  }
   await db.query(
     `UPDATE productos SET nombre=?,categoria=?,
      precio_venta=?,precio_compra=?,

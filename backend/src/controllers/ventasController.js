@@ -1,4 +1,5 @@
 const db = require('../config/db');
+const { buscarOCrearCliente } = require('../utils/clientes');
 
 const crearVenta = async (req, res) => {
   const { tipo_pago, items, tipo_cliente, cliente_nombre, cliente_cedula, cliente_id } = req.body;
@@ -27,6 +28,21 @@ const crearVenta = async (req, res) => {
     );
 
     for (const item of items) {
+      // Bloquea la fila dentro de la transacción para evitar que dos ventas
+      // simultáneas descuenten el mismo stock y lo dejen en negativo.
+      const [[producto]] = await conn.query(
+        `SELECT nombre, stock_actual FROM productos WHERE id = ? FOR UPDATE`,
+        [item.producto_id]
+      );
+      if (!producto || producto.stock_actual < item.cantidad) {
+        await conn.rollback();
+        const disponible = producto ? producto.stock_actual : 0;
+        return res.status(400).json({
+          ok: false,
+          mensaje: `Stock insuficiente para "${producto ? producto.nombre : 'producto'}": disponible ${disponible}, solicitado ${item.cantidad}`
+        });
+      }
+
       await conn.query(
         `INSERT INTO detalle_venta (venta_id, producto_id, cantidad, precio_unitario, subtotal)
          VALUES (?, ?, ?, ?, ?)`,
@@ -43,22 +59,17 @@ const crearVenta = async (req, res) => {
     let cajaRegistrada = false;
 
     if (tipo_pago === 'credito') {
-      // Si no hay cliente registrado, se crea automáticamente con el nombre/cédula
+      // Si no hay cliente registrado, se busca por cédula y se reutiliza; solo se
+      // crea uno nuevo si de verdad no existe (evita duplicar clientes).
       let cid = cliente_id;
       if (!cid) {
         const ced = (cliente_cedula && cliente_cedula !== '9999999999999') ? cliente_cedula : '';
-        // Si la cédula ya existe, se usa ese cliente (no se duplica)
-        if (ced) {
-          const [existe] = await conn.query(`SELECT id FROM clientes WHERE cedula = ? LIMIT 1`, [ced]);
-          if (existe.length > 0) cid = existe[0].id;
-        }
-        if (!cid) {
-          const [nuevoCli] = await conn.query(
-            `INSERT INTO clientes (nombre, cedula, telefono) VALUES (?, ?, '')`,
-            [(cliente_nombre || '').toLowerCase().replace(/(^|\s)\S/g, t => t.toUpperCase()), ced]
-          );
-          cid = nuevoCli.insertId;
-        }
+        const cliente = await buscarOCrearCliente(conn, {
+          nombre: (cliente_nombre || '').toLowerCase().replace(/(^|\s)\S/g, t => t.toUpperCase()),
+          cedula: ced,
+          telefono: '',
+        });
+        cid = cliente.id;
       }
       // ¿El cliente ya tiene una cuenta PENDIENTE? Si sí, se le suma; si no, se crea.
       const [pendientes] = await conn.query(

@@ -10,8 +10,8 @@ export default function CuentasPagar() {
   const [mensaje, setMensaje] = useState('');
   const [filtroEstado, setFiltroEstado] = useState('todas');
   const [busqueda, setBusqueda] = useState('');
-  const [mesFiltro, setMesFiltro] = useState(() => new Date().toISOString().slice(0, 7));
-  const [todosMeses, setTodosMeses] = useState(false);
+  const [fechaInicio, setFechaInicio] = useState('');
+  const [fechaFin, setFechaFin] = useState('');
   const [editId, setEditId] = useState(null);
   const [editProveedorId, setEditProveedorId] = useState(null);
   const [form, setForm] = useState({ proveedor_id: '', monto_total: '', vencimiento: '' });
@@ -19,14 +19,20 @@ export default function CuentasPagar() {
 
   const cargar = async () => {
     try {
-      const c = await api.get('/cuentas-pagar');
+      const params = new URLSearchParams();
+      if (fechaInicio) params.set('desde', fechaInicio);
+      if (fechaFin) params.set('hasta', fechaFin);
+      const qs = params.toString();
+      const c = await api.get(`/cuentas-pagar${qs ? '?' + qs : ''}`);
       if (c.ok && Array.isArray(c.data)) setCuentas(c.data);
       const p = await api.get('/proveedores');
       if (p.ok && Array.isArray(p.data)) setProveedores(p.data);
     } catch { setCuentas([]); }
   };
 
-  useEffect(() => { cargar(); }, []);
+  useEffect(() => { cargar(); }, [fechaInicio, fechaFin]);
+
+  const limpiarFechas = () => { setFechaInicio(''); setFechaFin(''); };
 
   const guardar = async () => {
     if (!form.proveedor_id || !form.monto_total || !form.vencimiento) {
@@ -97,10 +103,11 @@ export default function CuentasPagar() {
 
   const formatearNombre = (val) => val.charAt(0).toUpperCase() + val.slice(1).toLowerCase();
 
+  // El rango de fechas ya viene aplicado desde el backend; acá solo queda el
+  // filtro por estado y la búsqueda de texto, que son puramente de UI.
   const filtradas = cuentas.filter(c => {
     if (filtroEstado !== 'todas' && c.estado !== filtroEstado) return false;
     if (busqueda && !String(c.proveedor_nombre || '').toLowerCase().includes(busqueda.toLowerCase())) return false;
-    if (!todosMeses && String(c.vencimiento).slice(0, 7) !== mesFiltro) return false;
     return true;
   });
   const totalPendiente = cuentas.filter(c => c.estado === 'pendiente').reduce((s, c) => s + parseFloat(c.saldo), 0);
@@ -274,15 +281,23 @@ export default function CuentasPagar() {
 
       <div style={{display:'flex',gap:'12px',marginBottom:'16px',flexWrap:'wrap',alignItems:'center'}}>
         <label style={{fontSize:'12px',color:'#666',display:'flex',alignItems:'center',gap:'6px'}}>
-          📅 Mes:
-          <input type="month" value={mesFiltro} disabled={todosMeses}
-            onChange={e => setMesFiltro(e.target.value)}
-            style={{padding:'7px 10px',borderRadius:'6px',border:'1px solid #BBDEFB',background: todosMeses ? '#f0f0f0' : '#fff',color:'#333',fontSize:'13px'}} />
+          📅 Desde:
+          <input type="date" value={fechaInicio}
+            onChange={e => setFechaInicio(e.target.value)}
+            style={{padding:'7px 10px',borderRadius:'6px',border:'1px solid #BBDEFB',background:'#fff',color:'#333',fontSize:'13px'}} />
         </label>
-        <label style={{fontSize:'12px',color:'#666',display:'flex',alignItems:'center',gap:'6px',cursor:'pointer'}}>
-          <input type="checkbox" checked={todosMeses} onChange={e => setTodosMeses(e.target.checked)} />
-          Ver todos los meses
+        <label style={{fontSize:'12px',color:'#666',display:'flex',alignItems:'center',gap:'6px'}}>
+          Hasta:
+          <input type="date" value={fechaFin}
+            onChange={e => setFechaFin(e.target.value)}
+            style={{padding:'7px 10px',borderRadius:'6px',border:'1px solid #BBDEFB',background:'#fff',color:'#333',fontSize:'13px'}} />
         </label>
+        {(fechaInicio || fechaFin) && (
+          <button onClick={limpiarFechas}
+            style={{padding:'7px 12px',borderRadius:'6px',border:'1px solid #e0e0e0',background:'#fff',color:'#666',cursor:'pointer',fontSize:'12px'}}>
+            🔄 Limpiar fechas
+          </button>
+        )}
         <input placeholder="🔍 Buscar proveedor..." value={busqueda}
           onChange={e => setBusqueda(e.target.value)}
           style={{flex:1,minWidth:'160px',padding:'8px 12px',borderRadius:'6px',border:'1px solid #BBDEFB',background:'#fff',color:'#333',fontSize:'13px',boxSizing:'border-box'}} />

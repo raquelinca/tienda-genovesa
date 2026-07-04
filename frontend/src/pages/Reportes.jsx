@@ -18,26 +18,39 @@ export default function Reportes() {
   const [categorias, setCategorias] = useState([]);
   const [cargando, setCargando] = useState(false);
 
-  const cargar = async () => {
+  // Query-string compartido: fecha + categoría afectan ventas, más vendidos y export.
+  const filtrosQS = () => {
+    const params = new URLSearchParams();
+    if (fechaInicio) params.set('desde', fechaInicio);
+    if (fechaFin) params.set('hasta', fechaFin);
+    if (filtroCategoria !== 'todas') params.set('categoria', filtroCategoria);
+    return params.toString();
+  };
+
+  const cargarVentas = async () => {
     setCargando(true);
     try {
-      const v = await api.get('/reportes/ventas');
+      const qs = filtrosQS();
+      const v = await api.get(`/reportes/ventas${qs ? '?' + qs : ''}`);
       if (v.ok && Array.isArray(v.data)) setVentas(v.data);
+      else setVentas([]);
+    } catch { setVentas([]); }
+    setCargando(false);
+  };
+
+  const cargarProductos = async () => {
+    try {
       const p = await api.get('/productos');
       if (p.ok && Array.isArray(p.data)) {
         setProductos(p.data);
         const cats = [...new Set(p.data.map(x => x.categoria).filter(Boolean))];
         setCategorias(cats);
       }
-    } catch { setVentas([]); }
-    setCargando(false);
+    } catch { /* deja productos como estaba */ }
   };
 
   const cargarMasVendidos = async () => {
-    const params = new URLSearchParams();
-    if (fechaInicio) params.set('desde', fechaInicio);
-    if (fechaFin) params.set('hasta', fechaFin);
-    const qs = params.toString();
+    const qs = filtrosQS();
     try {
       const r = await api.get(`/reportes/productos-vendidos${qs ? '?' + qs : ''}`);
       if (r.ok && Array.isArray(r.data)) setMasVendidos(r.data);
@@ -45,18 +58,11 @@ export default function Reportes() {
     } catch { setMasVendidos([]); }
   };
 
-  useEffect(() => { cargar(); }, []);
-  useEffect(() => { cargarMasVendidos(); }, [fechaInicio, fechaFin]);
+  useEffect(() => { cargarProductos(); }, []);
+  useEffect(() => { cargarVentas(); cargarMasVendidos(); }, [fechaInicio, fechaFin, filtroCategoria]);
 
-  // ---- VENTAS (filtro: solo rango de fechas) ----
-  const ventasFiltradas = useMemo(() => ventas.filter(v => {
-    const fecha = new Date(v.fecha);
-    const desde = fechaInicio ? new Date(fechaInicio) : null;
-    const hasta = fechaFin ? new Date(fechaFin + 'T23:59:59') : null;
-    if (desde && fecha < desde) return false;
-    if (hasta && fecha > hasta) return false;
-    return true;
-  }), [ventas, fechaInicio, fechaFin]);
+  // Las ventas ya vienen filtradas por fecha y categoría desde el backend.
+  const ventasFiltradas = ventas;
 
   const totalVentas = ventasFiltradas.reduce((s, v) => s + parseFloat(v.total), 0);
   const promedio = ventasFiltradas.length > 0 ? totalVentas / ventasFiltradas.length : 0;
@@ -88,6 +94,7 @@ export default function Reportes() {
   const stockBajo = productosFiltrados.filter(p => p.stock_actual > 0 && p.stock_actual <= p.stock_minimo).length;
   const sinStock = productosFiltrados.filter(p => p.stock_actual === 0).length;
 
+  // Siempre muestra todas las categorías (es el selector); la activa se resalta.
   const porCategoria = useMemo(() => {
     const map = new Map();
     productos.forEach(p => {
@@ -99,15 +106,11 @@ export default function Reportes() {
 
   // ---- Exportar ----
   const exportUrl = (formato) => {
-    const params = new URLSearchParams();
-    if (fechaInicio) params.set('desde', fechaInicio);
-    if (fechaFin) params.set('hasta', fechaFin);
-    if (filtroCategoria !== 'todas') params.set('categoria', filtroCategoria);
-    const qs = params.toString();
+    const qs = filtrosQS();
     return `${API_BASE}/reportes/exportar-${formato}${qs ? '?' + qs : ''}`;
   };
 
-  const limpiarVentas = () => { setFechaInicio(''); setFechaFin(''); setAgrupacion('dia'); };
+  const limpiarFiltros = () => { setFechaInicio(''); setFechaFin(''); setAgrupacion('dia'); setFiltroCategoria('todas'); };
 
   // ---- Estilos (mismos colores/formato de siempre) ----
   const card = { background: theme.bgCard, borderRadius: '12px', boxShadow: '0 1px 4px #00000010' };
@@ -118,11 +121,13 @@ export default function Reportes() {
   const labelStyle = { fontSize: '12px', color: theme.primary, display: 'block', marginBottom: '4px' };
   const sectionTitle = { color: theme.primary, fontSize: '16px', margin: 0 };
   const th = { padding: '12px 10px', textAlign: 'left', color: theme.primary, borderBottom: `1px solid ${theme.primaryBorder}`, position: 'sticky', top: 0, background: theme.primaryLight };
-  const td = { padding: '10px' };
+  const td = { padding: '10px 10px' };
   const pill = (bg, color) => ({ background: bg, color, padding: '3px 10px', borderRadius: '20px', fontSize: '11px', fontWeight: '500' });
+  const bloque = { marginBottom: '28px' };
+  const kpiGrid = { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '20px' };
 
   const KpiCard = ({ titulo, valor, sub, color, borde, icono }) => (
-    <div className="rep-card" style={{ ...card, padding: '18px', border: `0.5px solid ${borde}` }}>
+    <div className="rep-card" style={{ ...card, padding: '20px', border: `0.5px solid ${borde}` }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '6px' }}>
         <span style={{ fontSize: '14px' }}>{icono}</span>
         <span style={{ fontSize: '12px', color: theme.textSecondary }}>{titulo}</span>
@@ -132,12 +137,20 @@ export default function Reportes() {
     </div>
   );
 
-  // Barras verticales con líneas de guía, valores y animación de crecimiento
-  const BarrasVerticales = ({ data, alto = 200 }) => {
+  // Línea de tendencia: más clara que barras para leer si las ventas suben o bajan.
+  const LineaTendencia = ({ data, alto = 200 }) => {
+    const [hoverIdx, setHoverIdx] = useState(null);
     if (data.length === 0) return <p style={{ color: theme.textMuted, fontSize: '13px', margin: 0 }}>Sin ventas en el período seleccionado.</p>;
     const max = Math.max(...data.map(d => d.valor), 1);
     const usable = alto - 44;
-    const anchoBarra = Math.max(26, Math.min(64, Math.floor(680 / data.length)));
+    const stepX = Math.max(48, Math.min(90, Math.floor(680 / Math.max(data.length - 1, 1))));
+    const width = Math.max(320, stepX * Math.max(data.length - 1, 1) + 40);
+    const puntos = data.map((d, i) => ({
+      ...d,
+      x: data.length > 1 ? 20 + i * stepX : width / 2,
+      y: usable - (d.valor / max) * usable,
+    }));
+    const pathD = puntos.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' ');
     const lineas = [1, 0.75, 0.5, 0.25, 0];
     return (
       <div style={{ display: 'flex', gap: '8px' }}>
@@ -149,22 +162,41 @@ export default function Reportes() {
             </div>
           ))}
         </div>
-        {/* Área de barras con líneas de guía */}
+        {/* Área del gráfico con líneas de guía */}
         <div style={{ flex: 1, overflowX: 'auto' }}>
-          <div style={{ position: 'relative', minWidth: 'min-content' }}>
+          <div style={{ position: 'relative', minWidth: width + 'px' }} onMouseLeave={() => setHoverIdx(null)}>
             <div style={{ position: 'absolute', top: '20px', left: 0, right: 0, height: usable + 'px' }}>
               {lineas.map((f, i) => (
                 <div key={i} style={{ position: 'absolute', left: 0, right: 0, top: `${(1 - f) * usable}px`, borderTop: `1px ${i === lineas.length - 1 ? 'solid' : 'dashed'} ${theme.borderLight}` }} />
               ))}
             </div>
-            <div style={{ display: 'flex', alignItems: 'flex-end', gap: '8px', height: alto + 'px', position: 'relative' }}>
-              {data.map((d, i) => (
-                <div key={`${agrupacion}-${i}-${d.label}`} className="rep-bar-vwrap"
-                  style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: anchoBarra + 'px', height: '100%', justifyContent: 'flex-end' }}>
-                  <div className="rep-bar-tip" style={{ fontSize: '10px', color: theme.textSecondary, marginBottom: '4px', whiteSpace: 'nowrap' }}>{money(d.valor)}</div>
-                  <div className="rep-bar-v" title={`${d.label}: ${money(d.valor)}`}
-                    style={{ width: '100%', height: `${(d.valor / max) * usable}px`, background: theme.primary, borderRadius: '5px 5px 0 0', minHeight: '3px' }} />
-                  <div style={{ fontSize: '10px', color: theme.textMuted, marginTop: '6px', whiteSpace: 'nowrap' }}>{d.label}</div>
+            <svg width={width} height={usable + 20} style={{ display: 'block' }}>
+              <g transform="translate(0, 20)">
+                {hoverIdx != null && (
+                  <line x1={puntos[hoverIdx].x} y1={0} x2={puntos[hoverIdx].x} y2={usable} stroke={theme.borderLight} strokeWidth="1" />
+                )}
+                <path d={pathD} fill="none" stroke={theme.primary} strokeWidth="2" />
+                {puntos.map((p, i) => (
+                  <g key={`${agrupacion}-${i}-${p.label}`} onMouseEnter={() => setHoverIdx(i)} style={{ cursor: 'pointer' }}>
+                    <circle cx={p.x} cy={p.y} r={12} fill="transparent" />
+                    <circle cx={p.x} cy={p.y} r={hoverIdx === i ? 6 : 4} fill={hoverIdx === i ? theme.primaryDark : theme.primary} stroke="#fff" strokeWidth="1.5" />
+                  </g>
+                ))}
+              </g>
+            </svg>
+            {hoverIdx != null && (
+              <div style={{
+                position: 'absolute', left: `${puntos[hoverIdx].x}px`, top: `${puntos[hoverIdx].y}px`,
+                transform: 'translate(-50%, -8px)', background: theme.textPrimary, color: '#fff',
+                fontSize: '11px', padding: '4px 8px', borderRadius: '4px', whiteSpace: 'nowrap', pointerEvents: 'none',
+              }}>
+                {puntos[hoverIdx].label}: {money(puntos[hoverIdx].valor)}
+              </div>
+            )}
+            <div style={{ position: 'relative', height: '20px' }}>
+              {puntos.map((p, i) => (
+                <div key={`lbl-${i}`} style={{ position: 'absolute', left: `${p.x}px`, transform: 'translateX(-50%)', fontSize: '10px', color: theme.textMuted, whiteSpace: 'nowrap', marginTop: '6px' }}>
+                  {p.label}
                 </div>
               ))}
             </div>
@@ -174,7 +206,7 @@ export default function Reportes() {
     );
   };
 
-  // Barras horizontales animadas (con ranking opcional)
+  // Barras horizontales animadas — ranking de magnitud (más vendidos).
   const BarrasHorizontales = ({ data, sufijo = '', color = theme.primary, ranking = false }) => {
     if (data.length === 0) return <p style={{ color: theme.textMuted, fontSize: '13px', margin: 0 }}>Sin datos para mostrar.</p>;
     const max = Math.max(...data.map(d => d.valor), 1);
@@ -206,6 +238,28 @@ export default function Reportes() {
     );
   };
 
+  // Barra apilada con % — para "parte-del-todo" (composición del inventario por categoría).
+  // Versión mínima: chips de texto con el conteo, sin barras ni proporciones.
+  // Se acomodan solos en varias líneas si crece el catálogo (no se amontonan).
+  const ChipsCategoria = ({ data, activeLabel }) => {
+    if (data.length === 0) return <p style={{ color: theme.textMuted, fontSize: '13px', margin: 0 }}>Sin datos para mostrar.</p>;
+    return (
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px' }}>
+        {data.map(d => {
+          const activo = activeLabel != null && d.label === activeLabel;
+          return (
+            <span key={d.label} style={{
+              ...pill(activo ? theme.primary : theme.primaryLight, activo ? '#fff' : theme.primary),
+              fontSize: '13px', padding: '6px 14px', fontWeight: activo ? '600' : '500',
+            }}>
+              {d.label} · {d.valor}
+            </span>
+          );
+        })}
+      </div>
+    );
+  };
+
   return (
     <div style={{ background: theme.bgPage, minHeight: '100vh', padding: '24px', fontFamily: 'sans-serif' }}>
       <style>{`
@@ -222,17 +276,14 @@ export default function Reportes() {
         .rep-row:hover { background: ${theme.bgCardHover}; }
       `}</style>
 
-      <div style={{ marginBottom: '24px' }}>
+      <div style={{ marginBottom: '20px' }}>
         <h1 style={{ color: theme.primary, fontSize: '22px', margin: '0 0 4px' }}>📊 Reportes</h1>
         <p style={{ color: theme.textSecondary, fontSize: '14px', margin: 0 }}>Tienda Genovesa — Ventas e inventario</p>
       </div>
 
-      {/* ============ SECCIÓN VENTAS ============ */}
-      <h2 style={{ ...sectionTitle, marginBottom: '12px' }}>🧾 Ventas</h2>
-
-      {/* Filtros */}
-      <div style={{ ...card, padding: '20px', border: `0.5px solid ${theme.border}`, marginBottom: '16px' }}>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px' }}>
+      {/* ============ FILTROS (afectan todo el panel) ============ */}
+      <div style={{ ...card, padding: '24px', border: `0.5px solid ${theme.border}`, ...bloque }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '16px' }}>
           <div>
             <label style={labelStyle}>Fecha inicio</label>
             <input type="date" value={fechaInicio} onChange={e => setFechaInicio(e.target.value)} style={inputStyle} />
@@ -255,6 +306,13 @@ export default function Reportes() {
               ))}
             </div>
           </div>
+          <div>
+            <label style={labelStyle}>Categoría</label>
+            <select value={filtroCategoria} onChange={e => setFiltroCategoria(e.target.value)} style={inputStyle}>
+              <option value="todas">Todas</option>
+              {categorias.map(c => <option key={c} value={c}>{c}</option>)}
+            </select>
+          </div>
         </div>
         <div style={{ display: 'flex', gap: '8px', marginTop: '14px', flexWrap: 'wrap' }}>
           <button onClick={() => window.open(exportUrl('excel'), '_blank')}
@@ -265,41 +323,61 @@ export default function Reportes() {
             style={{ padding: '8px 16px', borderRadius: '6px', border: 'none', background: theme.danger, color: '#fff', cursor: 'pointer', fontSize: '13px', fontWeight: '500' }}>
             📄 Exportar PDF
           </button>
-          <button onClick={limpiarVentas}
+          <button onClick={limpiarFiltros}
             style={{ padding: '8px 16px', borderRadius: '6px', border: `1px solid ${theme.border}`, background: '#fff', color: theme.textSecondary, cursor: 'pointer', fontSize: '13px' }}>
             🔄 Limpiar filtros
           </button>
         </div>
       </div>
 
-      {/* KPIs de ventas */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '16px', marginBottom: '16px' }}>
-        <KpiCard icono="💵" titulo="Total vendido" valor={money(totalVentas)} sub="en el período filtrado" color={theme.primary} borde={theme.primaryBorder} />
-        <KpiCard icono="🧾" titulo="Transacciones" valor={ventasFiltradas.length} sub="ventas registradas" color={theme.success} borde={theme.successBorder} />
-        <KpiCard icono="📈" titulo="Promedio por venta" valor={money(promedio)} sub="por transacción" color={theme.warning} borde={theme.warningBorder} />
+      {/* ============ KPIs (lo primero que se ve tras los filtros) ============ */}
+      <div style={{ ...bloque }}>
+        <div style={{ ...kpiGrid, marginBottom: '20px' }}>
+          <KpiCard icono="💵" titulo="Total vendido" valor={money(totalVentas)} sub="en el período filtrado" color={theme.primary} borde={theme.primaryBorder} />
+          <KpiCard icono="🧾" titulo="Transacciones" valor={ventasFiltradas.length} sub="ventas registradas" color={theme.success} borde={theme.successBorder} />
+          <KpiCard icono="📈" titulo="Promedio por venta" valor={money(promedio)} sub="por transacción" color={theme.warning} borde={theme.warningBorder} />
+        </div>
+        <div style={kpiGrid}>
+          <KpiCard icono="📦" titulo="Productos" valor={productosFiltrados.length}
+            sub={filtroCategoria === 'todas' ? 'en todo el inventario' : `en "${filtroCategoria}"`}
+            color={theme.primary} borde={theme.primaryBorder} />
+          <KpiCard icono="⚠️" titulo="Stock bajo" valor={stockBajo} sub="por debajo del mínimo" color={theme.warning} borde={theme.warningBorder} />
+          <KpiCard icono="🚨" titulo="Sin stock" valor={sinStock} sub="agotados" color={theme.danger} borde={theme.dangerBorder} />
+        </div>
       </div>
 
-      {/* Gráfico ventas por período (centro de la página) */}
-      <div style={{ ...card, border: `0.5px solid ${theme.border}`, padding: '20px', marginBottom: '16px' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+      {/* Gráfico ventas por período */}
+      <div style={{ ...card, border: `0.5px solid ${theme.border}`, padding: '24px', ...bloque }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '18px' }}>
           <h3 style={{ ...sectionTitle, fontSize: '14px' }}>📈 Ventas por {agrupacion === 'mes' ? 'mes' : 'día'}</h3>
-          <span style={{ fontSize: '11px', color: theme.textMuted }}>Pasa el mouse sobre cada barra para ver el monto</span>
+          <span style={{ fontSize: '11px', color: theme.textMuted }}>Pasa el mouse sobre cada punto para ver el monto</span>
         </div>
-        <BarrasVerticales data={serie} />
+        <LineaTendencia data={serie} />
       </div>
 
       {/* Gráfico productos más vendidos */}
-      <div style={{ ...card, border: `0.5px solid ${theme.border}`, padding: '20px', marginBottom: '16px' }}>
-        <h3 style={{ ...sectionTitle, fontSize: '14px', marginBottom: '16px' }}>🏆 Productos más vendidos</h3>
+      <div style={{ ...card, border: `0.5px solid ${theme.border}`, padding: '24px', ...bloque }}>
+        <h3 style={{ ...sectionTitle, fontSize: '14px', marginBottom: '18px' }}>🏆 Productos más vendidos</h3>
         <BarrasHorizontales
           data={masVendidos.slice(0, 8).map(p => ({ label: p.nombre, valor: Number(p.unidades) || 0 }))}
           sufijo=" u." color={theme.success} ranking />
       </div>
 
+      {/* Gráfico productos por categoría (solo visual; el selector "Categoría" de arriba es el único control de filtro) */}
+      <div style={{ ...card, border: `0.5px solid ${theme.border}`, padding: '24px', ...bloque }}>
+        <h3 style={{ ...sectionTitle, fontSize: '14px', marginBottom: '18px' }}>📦 Productos por categoría</h3>
+        <ChipsCategoria data={porCategoria} activeLabel={filtroCategoria !== 'todas' ? filtroCategoria : null} />
+      </div>
+
       {/* Tabla de ventas */}
-      <div style={{ ...card, border: `0.5px solid ${theme.border}`, marginBottom: '32px' }}>
-        <div style={{ padding: '16px', borderBottom: `1px solid ${theme.primaryLight}` }}>
+      <div style={{ ...card, border: `0.5px solid ${theme.border}`, ...bloque }}>
+        <div style={{ padding: '18px 20px', borderBottom: `1px solid ${theme.primaryLight}` }}>
           <h3 style={{ ...sectionTitle, fontSize: '14px' }}>Historial de ventas</h3>
+          {filtroCategoria !== 'todas' && (
+            <p style={{ fontSize: '11px', color: theme.textMuted, margin: '4px 0 0' }}>
+              Los montos corresponden solo a lo vendido de "{filtroCategoria}" en cada venta.
+            </p>
+          )}
         </div>
         <div style={{ overflow: 'auto', maxHeight: '380px' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
@@ -332,37 +410,9 @@ export default function Reportes() {
         </div>
       </div>
 
-      {/* ============ SECCIÓN INVENTARIO ============ */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', marginBottom: '12px', flexWrap: 'wrap' }}>
-        <h2 style={sectionTitle}>📦 Inventario</h2>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <label style={{ fontSize: '12px', color: theme.textSecondary }}>Categoría:</label>
-          <select value={filtroCategoria} onChange={e => setFiltroCategoria(e.target.value)}
-            style={{ ...inputStyle, width: 'auto', minWidth: '160px' }}>
-            <option value="todas">Todas</option>
-            {categorias.map(c => <option key={c} value={c}>{c}</option>)}
-          </select>
-        </div>
-      </div>
-
-      {/* KPIs inventario */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '16px', marginBottom: '16px' }}>
-        <KpiCard icono="📦" titulo="Productos" valor={productosFiltrados.length}
-          sub={filtroCategoria === 'todas' ? 'en todo el inventario' : `en "${filtroCategoria}"`}
-          color={theme.primary} borde={theme.primaryBorder} />
-        <KpiCard icono="⚠️" titulo="Stock bajo" valor={stockBajo} sub="por debajo del mínimo" color={theme.warning} borde={theme.warningBorder} />
-        <KpiCard icono="🚨" titulo="Sin stock" valor={sinStock} sub="agotados" color={theme.danger} borde={theme.dangerBorder} />
-      </div>
-
-      {/* Gráfico inventario por categoría */}
-      <div style={{ ...card, border: `0.5px solid ${theme.border}`, padding: '20px', marginBottom: '16px' }}>
-        <h3 style={{ ...sectionTitle, fontSize: '14px', marginBottom: '16px' }}>📦 Productos por categoría</h3>
-        <BarrasHorizontales data={porCategoria} sufijo=" prod." />
-      </div>
-
       {/* Tabla de inventario */}
       <div style={{ ...card, border: `0.5px solid ${theme.border}` }}>
-        <div style={{ padding: '16px', borderBottom: `1px solid ${theme.primaryLight}` }}>
+        <div style={{ padding: '18px 20px', borderBottom: `1px solid ${theme.primaryLight}` }}>
           <h3 style={{ ...sectionTitle, fontSize: '14px' }}>Detalle de productos</h3>
         </div>
         <div style={{ overflow: 'auto', maxHeight: '420px' }}>

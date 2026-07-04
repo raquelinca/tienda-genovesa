@@ -1,19 +1,33 @@
 const db = require('../config/db');
+const { buscarOCrearCliente } = require('../utils/clientes');
+
+// Rango de fechas sobre vencimiento; si no viene desde/hasta, no filtra nada (1=1).
+function filtroFechaVencimiento(query, alias) {
+  const cond = [];
+  const params = [];
+  if (query.desde) { cond.push(`DATE(${alias}.vencimiento) >= ?`); params.push(query.desde); }
+  if (query.hasta) { cond.push(`DATE(${alias}.vencimiento) <= ?`); params.push(query.hasta); }
+  return { cond: cond.length ? cond.join(' AND ') : '1=1', params };
+}
 
 const getCuentas = async (req, res) => {
   try {
     // Actualizar vencidas automáticamente
     await db.query(`
-      UPDATE cuentas_cobrar 
-      SET estado = 'vencida' 
+      UPDATE cuentas_cobrar
+      SET estado = 'vencida'
       WHERE vencimiento < CURDATE() AND estado = 'pendiente'
     `);
+    // Las cuentas pendientes/vencidas siempre se muestran (una deuda no deja de existir
+    // por estar fuera del rango); el rango de fechas solo filtra las ya pagadas.
+    const f = filtroFechaVencimiento(req.query, 'cc');
     const [rows] = await db.query(`
       SELECT cc.*, c.nombre as cliente_nombre
       FROM cuentas_cobrar cc
       JOIN clientes c ON cc.cliente_id = c.id
+      WHERE cc.estado IN ('pendiente', 'vencida') OR (${f.cond})
       ORDER BY cc.vencimiento ASC
-    `);
+    `, f.params);
     res.json({ ok: true, data: rows });
   } catch (err) {
     res.status(500).json({ ok: false, mensaje: err.message });
@@ -124,18 +138,18 @@ const getClientes = async (req, res) => {
 const crearCliente = async (req, res) => {
   try {
     const { nombre, cedula, telefono } = req.body;
-    const ced = (cedula || '').trim();
-    if (ced) {
-      const [existe] = await db.query(`SELECT id FROM clientes WHERE cedula = ? LIMIT 1`, [ced]);
-      if (existe.length > 0) {
-        return res.status(409).json({ ok: false, mensaje: 'Ya existe un cliente con esa cédula/RUC.' });
-      }
+    const resultado = await buscarOCrearCliente(db, {
+      nombre: (nombre || '').toLowerCase().replace(/(^|\s)\S/g, t => t.toUpperCase()),
+      cedula,
+      telefono,
+    });
+    if (resultado.existente) {
+      return res.json({
+        ok: true, id: resultado.id, existente: true,
+        mensaje: `Ya existía "${resultado.nombre}" con esa cédula/RUC — se usará ese registro en vez de crear uno nuevo.`,
+      });
     }
-    await db.query(
-      `INSERT INTO clientes (nombre, cedula, telefono) VALUES (?, ?, ?)`,
-     [(nombre || '').toLowerCase().replace(/(^|\s)\S/g, t => t.toUpperCase()), ced, telefono || '']
-    );
-    res.json({ ok: true });
+    res.json({ ok: true, id: resultado.id, existente: false });
   } catch (err) {
     res.status(500).json({ ok: false, mensaje: err.message });
   }

@@ -1,18 +1,29 @@
 const db = require('../config/db');
 
+// Rango de fechas sobre vencimiento; si no viene desde/hasta, no filtra nada (1=1).
+function filtroFechaVencimiento(query, alias) {
+  const cond = [];
+  const params = [];
+  if (query.desde) { cond.push(`DATE(${alias}.vencimiento) >= ?`); params.push(query.desde); }
+  if (query.hasta) { cond.push(`DATE(${alias}.vencimiento) <= ?`); params.push(query.hasta); }
+  return { cond: cond.length ? cond.join(' AND ') : '1=1', params };
+}
+
 const getCuentas = async (req, res) => {
   try {
     await db.query(`
-      UPDATE cuentas_pagar 
-      SET estado = 'vencida' 
+      UPDATE cuentas_pagar
+      SET estado = 'vencida'
       WHERE vencimiento < CURDATE() AND estado = 'pendiente'
     `);
+    const f = filtroFechaVencimiento(req.query, 'cp');
     const [rows] = await db.query(`
       SELECT cp.*, p.nombre as proveedor_nombre
       FROM cuentas_pagar cp
       JOIN proveedores p ON cp.proveedor_id = p.id
+      WHERE ${f.cond}
       ORDER BY cp.vencimiento ASC
-    `);
+    `, f.params);
     res.json({ ok: true, data: rows });
   } catch (err) {
     res.status(500).json({ ok: false, mensaje: err.message });
