@@ -67,10 +67,6 @@ export default function Login({ onLogin }) {
           style={{width:'100%',padding:'13px',borderRadius:'8px',border:'none',background:'#1565C0',color:'#fff',fontSize:'15px',fontWeight:'500',cursor: cargando ? 'default' : 'pointer',opacity: cargando ? 0.7 : 1}}>
           {cargando ? '⏳ Ingresando...' : '🔐 Ingresar'}
         </button>
-
-        <p style={{textAlign:'center',color:'#999',fontSize:'12px',marginTop:'20px'}}>
-          Usuario: admin@tienda.com / 1234
-        </p>
       </div>
     </div>
   );

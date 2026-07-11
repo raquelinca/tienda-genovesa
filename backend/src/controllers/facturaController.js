@@ -1,6 +1,7 @@
 const db = require('../config/db');
 const PDFDocument = require('pdfkit');
 const { construirFacturaXML, EMISOR } = require('../utils/sriFactura');
+const { firmarYEnviar } = require('../utils/firmarYEnviar');
 const fs = require('fs');
 const path = require('path');
 
@@ -143,4 +144,101 @@ const descargarXML = async (req, res) => {
   }
 };
 
-module.exports = { generarFactura, descargarXML };
+// node-soap a veces envuelve un único nodo en array y otras veces no,
+// según cómo venga la respuesta XML del SRI — normalizamos ambos casos.
+function uno(valor) {
+  return Array.isArray(valor) ? valor[0] : valor;
+}
+
+function extraerMensajes(mensajesNodo) {
+  if (!mensajesNodo) return [];
+  const lista = Array.isArray(mensajesNodo.mensaje) ? mensajesNodo.mensaje : [mensajesNodo.mensaje].filter(Boolean);
+  return lista.map(m => {
+    const identificador = m.identificador ? `[${m.identificador}] ` : '';
+    const adicional = m.informacionAdicional ? ` — ${m.informacionAdicional}` : '';
+    return `${identificador}${m.mensaje}${adicional}`;
+  });
+}
+
+// Traduce las respuestas SOAP de recepción/autorización del SRI a la forma
+// que consume el frontend: estados, número de autorización y mensajes.
+function interpretarRespuestaSRI({ recepcion, autorizacion }) {
+  const respRecepcion = recepcion?.RespuestaRecepcionComprobante || recepcion || {};
+  const estadoRecepcion = respRecepcion.estado || null;
+  const comprobanteRecepcion = uno(respRecepcion.comprobantes?.comprobante);
+  let mensajes = extraerMensajes(comprobanteRecepcion?.mensajes);
+
+  let estadoAutorizacion = null;
+  let numeroAutorizacion = null;
+
+  if (estadoRecepcion === 'RECIBIDA' && autorizacion) {
+    const respAutorizacion = autorizacion.RespuestaAutorizacionComprobante || autorizacion;
+    const autorizacionDoc = uno(respAutorizacion.autorizaciones?.autorizacion);
+    if (autorizacionDoc) {
+      estadoAutorizacion = autorizacionDoc.estado === 'EN PROCESO' ? 'EN PROCESAMIENTO' : autorizacionDoc.estado;
+      numeroAutorizacion = autorizacionDoc.numeroAutorizacion || null;
+      const mensajesAutorizacion = extraerMensajes(autorizacionDoc.mensajes);
+      if (mensajesAutorizacion.length) mensajes = mensajesAutorizacion;
+    }
+  }
+
+  return { estadoRecepcion, estadoAutorizacion, numeroAutorizacion, mensajes };
+}
+
+// POST /api/factura/enviar-sri/:venta_id — firma la factura y la envía al SRI
+// (ambiente de pruebas u producción según SRI_AMBIENTE), devolviendo si quedó
+// AUTORIZADA, NO AUTORIZADA, EN PROCESAMIENTO o DEVUELTA en la recepción.
+const enviarSRI = async (req, res) => {
+  try {
+    const { venta_id } = req.params;
+
+    const [ventas] = await db.query(`
+      SELECT v.*,
+        COALESCE(v.cliente_nombre, 'CONSUMIDOR FINAL') as cliente_nombre,
+        COALESCE(v.cliente_cedula, '9999999999999') as cliente_cedula
+      FROM ventas v WHERE v.id = ?
+    `, [venta_id]);
+    if (ventas.length === 0) {
+      return res.status(404).json({ ok: false, mensaje: 'Venta no encontrada.' });
+    }
+    const venta = ventas[0];
+
+    const [detalles] = await db.query(`
+      SELECT dv.*, p.nombre as producto_nombre
+      FROM detalle_venta dv
+      JOIN productos p ON dv.producto_id = p.id
+      WHERE dv.venta_id = ?
+    `, [venta_id]);
+    if (detalles.length === 0) {
+      return res.status(400).json({ ok: false, mensaje: 'La venta no tiene detalle de productos.' });
+    }
+
+    const { xml, claveAcceso } = construirFacturaXML(venta, detalles);
+
+    const resultado = await firmarYEnviar(xml, claveAcceso);
+    if (!resultado.ok) {
+      return res.status(400).json({ ok: false, mensaje: resultado.mensaje || 'No se pudo enviar la factura al SRI.' });
+    }
+
+    const { estadoRecepcion, estadoAutorizacion, numeroAutorizacion, mensajes } = interpretarRespuestaSRI(resultado);
+
+    if (estadoRecepcion !== 'RECIBIDA') {
+      return res.json({
+        ok: false,
+        estadoRecepcion, estadoAutorizacion: null, numeroAutorizacion: null, mensajes, claveAcceso,
+        mensaje: 'El SRI devolvió el comprobante en la recepción (errores de forma o de firma).',
+      });
+    }
+
+    const autorizado = estadoAutorizacion === 'AUTORIZADO';
+    res.json({
+      ok: autorizado,
+      estadoRecepcion, estadoAutorizacion, numeroAutorizacion, mensajes, claveAcceso,
+      mensaje: autorizado ? 'Factura AUTORIZADA por el SRI.' : 'El SRI no autorizó la factura.',
+    });
+  } catch (err) {
+    res.status(500).json({ ok: false, mensaje: err.message });
+  }
+};
+
+module.exports = { generarFactura, descargarXML, enviarSRI };

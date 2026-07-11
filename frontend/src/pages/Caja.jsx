@@ -1,5 +1,8 @@
+
+
 import { useEffect, useState } from 'react';
 import { api } from '../services/api';
+import Swal from 'sweetalert2';
 
 export default function Caja() {
   const [cajaActiva, setCajaActiva] = useState(null);
@@ -48,7 +51,18 @@ export default function Caja() {
   };
 
   const cerrarCaja = async () => {
-    if (!confirm('¿Cerrar la caja?')) return;
+    const result = await Swal.fire({
+      title: '¿Cerrar la caja?',
+      text: 'Esta acción no se puede deshacer.',
+      icon: 'warning',
+      showCancelButton: true,
+      confirmButtonColor: '#C62828',
+      cancelButtonColor: '#1565C0',
+      confirmButtonText: 'Sí, cerrar',
+      cancelButtonText: 'Cancelar',
+      reverseButtons: true,
+    });
+    if (!result.isConfirmed) return;
     const res = await api.post('/caja/cerrar', { caja_id: cajaActiva.id });
     if (res.ok) { setMensaje('✅ Caja cerrada.'); cargar(); }
     setTimeout(() => setMensaje(''), 3000);

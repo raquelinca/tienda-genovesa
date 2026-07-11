@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api } from '../services/api';
+import { limpiarMonto, limpiarEntero, MAX_MONTO, MAX_CANTIDAD } from '../utils/numeros';
+import Swal from 'sweetalert2';
 
 const VACIO = {
   nombre:'', categoria:'', precio_venta:'',
@@ -38,29 +40,54 @@ export default function Inventario() {
   useEffect(() => { cargar(); cargarCategorias(); }, []);
 
   const guardar = async () => {
-    if (!form.nombre.trim()) { setErrores('⚠️ El nombre es obligatorio.'); return; }
+    const nombre = form.nombre.trim();
+    if (!nombre) { setErrores('⚠️ El nombre es obligatorio.'); return; }
+    if (nombre.length < 2 || nombre.length > 60) { setErrores('⚠️ El nombre debe tener entre 2 y 60 caracteres.'); return; }
     if (!form.categoria.trim()) { setErrores('⚠️ La categoría es obligatoria.'); return; }
     if (!form.precio_venta || parseFloat(form.precio_venta) <= 0) { setErrores('⚠️ El precio de venta debe ser mayor a 0.'); return; }
+    if (!/^\d+(\.\d{1,2})?$/.test(form.precio_venta) || parseFloat(form.precio_venta) > MAX_MONTO) { setErrores(`⚠️ El precio de venta debe ser un número válido de hasta 2 decimales y no mayor a ${MAX_MONTO}.`); return; }
+    if (form.precio_compra && parseFloat(form.precio_compra) < 0) { setErrores('⚠️ El precio de compra no puede ser negativo.'); return; }
+    if (form.precio_compra && (!/^\d+(\.\d{1,2})?$/.test(form.precio_compra) || parseFloat(form.precio_compra) > MAX_MONTO)) { setErrores(`⚠️ El precio de compra debe ser un número válido de hasta 2 decimales y no mayor a ${MAX_MONTO}.`); return; }
     if (form.stock_actual === '') { setErrores('⚠️ El stock actual es obligatorio.'); return; }
+    if (!/^\d+$/.test(String(form.stock_actual)) || parseInt(form.stock_actual) > MAX_CANTIDAD) { setErrores(`⚠️ El stock actual debe ser un número entero entre 0 y ${MAX_CANTIDAD}.`); return; }
+    if (form.stock_minimo && (!/^\d+$/.test(String(form.stock_minimo)) || parseInt(form.stock_minimo) > MAX_CANTIDAD)) { setErrores(`⚠️ El stock mínimo debe ser un número entero entre 0 y ${MAX_CANTIDAD}.`); return; }
     setErrores('');
-    if (editId) await api.put(`/productos/${editId}`, form);
-    else await api.post('/productos', form);
-    setForm(VACIO); setEditId(null);
-    setMostrarForm(false); cargar();
+    const datos = { ...form, nombre, categoria: form.categoria.trim() };
+    let res;
+    if (editId) res = await api.put(`/productos/${editId}`, datos);
+    else res = await api.post('/productos', datos);
+    if (res.ok) {
+      setForm(VACIO); setEditId(null);
+      setMostrarForm(false); cargar();
+    } else {
+      setErrores('⚠️ ' + (res.mensaje || 'Error del servidor.'));
+    }
   };
 
   const editar = (p) => { setForm(p); setEditId(p.id); setMostrarForm(true); };
 
   const eliminar = async (id) => {
-    if (confirm('¿Eliminar este producto?')) {
-      await api.delete(`/productos/${id}`); cargar();
-    }
+    const result = await Swal.fire({
+      title: '¿Eliminar este producto?',
+      text: 'Esta acción no se puede deshacer.',
+      icon: 'warning',
+      showCancelButton: true,
+      confirmButtonColor: '#C62828',
+      cancelButtonColor: '#1565C0',
+      confirmButtonText: 'Sí, eliminar',
+      cancelButtonText: 'Cancelar',
+      reverseButtons: true,
+    });
+    if (!result.isConfirmed) return;
+    await api.delete(`/productos/${id}`); cargar();
   };
 
   const agregarCategoria = async () => {
-    if (!nuevaCategoria.trim()) { setMensajeCat('⚠️ Escribe un nombre de categoría.'); return; }
+    const nombre = nuevaCategoria.trim();
+    if (!nombre) { setMensajeCat('⚠️ Escribe un nombre de categoría.'); return; }
+    if (nombre.length < 2 || nombre.length > 60) { setMensajeCat('⚠️ La categoría debe tener entre 2 y 60 caracteres.'); return; }
     try {
-      const res = await api.post('/categorias', { nombre: nuevaCategoria });
+      const res = await api.post('/categorias', { nombre });
       if (res.ok) {
         setNuevaCategoria('');
         cargarCategorias();
@@ -76,13 +103,28 @@ export default function Inventario() {
   };
 
   const guardarEditCategoria = async (id) => {
-    if (!editCategoriaValor.trim()) return;
-    const res = await api.put(`/categorias/${id}`, { nombre: editCategoriaValor });
+    const nombre = editCategoriaValor.trim();
+    if (!nombre) { setMensajeCat('⚠️ Escribe un nombre de categoría.'); return; }
+    if (nombre.length < 2 || nombre.length > 60) { setMensajeCat('⚠️ La categoría debe tener entre 2 y 60 caracteres.'); return; }
+    const res = await api.put(`/categorias/${id}`, { nombre });
     if (res.ok) { setEditCategoria(null); cargarCategorias(); }
+    else setMensajeCat('❌ ' + (res.mensaje || 'No se pudo actualizar la categoría.'));
+    setTimeout(() => setMensajeCat(''), 4000);
   };
 
   const eliminarCategoria = async (id) => {
-    if (!confirm('¿Eliminar esta categoría?')) return;
+    const result = await Swal.fire({
+      title: '¿Eliminar esta categoría?',
+      text: 'Esta acción no se puede deshacer.',
+      icon: 'warning',
+      showCancelButton: true,
+      confirmButtonColor: '#C62828',
+      cancelButtonColor: '#1565C0',
+      confirmButtonText: 'Sí, eliminar',
+      cancelButtonText: 'Cancelar',
+      reverseButtons: true,
+    });
+    if (!result.isConfirmed) return;
     const res = await api.delete(`/categorias/${id}`);
     if (res.ok) cargarCategorias();
   };
@@ -97,7 +139,11 @@ export default function Inventario() {
 };
 
   const handlePrecio = (campo, valor) => {
-    if (/^\d*\.?\d*$/.test(valor)) setForm({...form, [campo]: valor});
+    setForm({...form, [campo]: limpiarMonto(valor)});
+  };
+
+  const handleEntero = (campo, valor) => {
+    setForm({...form, [campo]: limpiarEntero(valor)});
   };
 
   const nombresSugeridos = productos
@@ -152,8 +198,9 @@ export default function Inventario() {
 
             <div style={{position:'relative'}}>
               <label style={{fontSize:'12px',color:'#1565C0',display:'block',marginBottom:'6px'}}>Nombre *</label>
-              <input value={form.nombre} onChange={handleNombre}
+              <input value={form.nombre} onChange={handleNombre} maxLength={20}
                 placeholder="Ej: Galletas Oreo" style={inputStyle} autoComplete="off" />
+              <div style={{fontSize:'10px',color:'#999',textAlign:'right',marginTop:'2px'}}>{form.nombre.length}/20</div>
               {nombresSugeridos.length > 0 && (
                 <div style={{position:'absolute',top:'100%',left:0,right:0,background:'#fff',border:'1px solid #BBDEFB',borderRadius:'0 0 8px 8px',zIndex:99,boxShadow:'0 4px 12px #00000020'}}>
                   {nombresSugeridos.slice(0,5).map(s => (
@@ -186,7 +233,7 @@ export default function Inventario() {
                       onMouseLeave={e => e.currentTarget.style.background='transparent'}>
                       {editCategoria === c.id ? (
                         <>
-                          <input value={editCategoriaValor}
+                          <input value={editCategoriaValor} maxLength={60}
                             onChange={e => setEditCategoriaValor(e.target.value.toUpperCase())}
                             style={{...inputStyle, flex:1, padding:'4px 8px', fontSize:'12px'}}
                             autoFocus onClick={e => e.stopPropagation()} />
@@ -210,7 +257,7 @@ export default function Inventario() {
                     </div>
                   ))}
                   <div style={{padding:'10px 12px',display:'flex',gap:'6px',borderTop:'1px solid #BBDEFB'}}>
-                    <input value={nuevaCategoria}
+                    <input value={nuevaCategoria} maxLength={60}
                       onChange={e => setNuevaCategoria(e.target.value.toUpperCase())}
                       placeholder="+ Nueva categoría..."
                       style={{...inputStyle, flex:1, padding:'6px 8px', fontSize:'12px'}}
@@ -228,29 +275,29 @@ export default function Inventario() {
 
             <div>
               <label style={{fontSize:'12px',color:'#1565C0',display:'block',marginBottom:'6px'}}>Precio venta * ($)</label>
-              <input value={form.precio_venta}
+              <input value={form.precio_venta} maxLength={9}
                 onChange={e => handlePrecio('precio_venta', e.target.value)}
                 placeholder="0.00" inputMode="decimal" style={inputStyle} />
             </div>
 
             <div>
               <label style={{fontSize:'12px',color:'#1565C0',display:'block',marginBottom:'6px'}}>Precio compra ($)</label>
-              <input value={form.precio_compra}
+              <input value={form.precio_compra} maxLength={9}
                 onChange={e => handlePrecio('precio_compra', e.target.value)}
                 placeholder="0.00" inputMode="decimal" style={inputStyle} />
             </div>
 
             <div>
               <label style={{fontSize:'12px',color:'#1565C0',display:'block',marginBottom:'6px'}}>Stock actual *</label>
-              <input value={form.stock_actual}
-                onChange={e => handlePrecio('stock_actual', e.target.value)}
+              <input value={form.stock_actual} maxLength={6}
+                onChange={e => handleEntero('stock_actual', e.target.value)}
                 placeholder="0" inputMode="numeric" style={inputStyle} />
             </div>
 
             <div>
               <label style={{fontSize:'12px',color:'#1565C0',display:'block',marginBottom:'6px'}}>Stock mínimo *</label>
-              <input value={form.stock_minimo}
-                onChange={e => handlePrecio('stock_minimo', e.target.value)}
+              <input value={form.stock_minimo} maxLength={6}
+                onChange={e => handleEntero('stock_minimo', e.target.value)}
                 placeholder="5" inputMode="numeric" style={inputStyle} />
             </div>
           </div>

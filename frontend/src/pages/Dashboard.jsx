@@ -33,7 +33,7 @@ export default function Dashboard() {
     <div style={{background:'#f8f9fa',minHeight:'100vh',padding:'24px',color:'#333',fontFamily:'sans-serif'}}>
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'24px'}}>
         <div>
-          <h1 style={{color:'#1565C0',fontSize:'22px',margin:'0 0 4px'}}>☀️ ¡Buenos días, Raquel!</h1>
+          <h1 style={{color:'#1565C0',fontSize:'22px',margin:'0 0 4px'}}>☀️ ¡Buenos días, Tienda Genovesa!</h1>
           <p style={{color:'#666',fontSize:'14px',margin:0}}>Tienda Genovesa — Panel de control</p>
         </div>
         <div style={{background:'#E3F2FD',border:'1px solid #BBDEFB',borderRadius:'20px',padding:'6px 16px',color:'#1565C0',fontSize:'13px'}}>

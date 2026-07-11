@@ -1,5 +1,7 @@
 import { Fragment, useEffect, useMemo, useState } from 'react';
 import { api } from '../services/api';
+import { limpiarMonto, MAX_MONTO } from '../utils/numeros';
+import Swal from 'sweetalert2';
 
 export default function CuentasCobrar() {
   const [cuentas, setCuentas] = useState([]);
@@ -12,16 +14,29 @@ export default function CuentasCobrar() {
   const [fechaInicio, setFechaInicio] = useState('');
   const [fechaFin, setFechaFin] = useState('');
   const [editId, setEditId] = useState(null);
-  const [form, setForm] = useState({ cliente_id: '', monto_total: '', vencimiento: '' });
-  const [formCliente, setFormCliente] = useState({ nombre: '', cedula: '', telefono: '' });
+  const [form, setForm] = useState({ cliente_id: '', monto_total: '', vencimiento: '', estado: 'pendiente' });
+  const [formCliente, setFormCliente] = useState({ nombre: '', cedula: '', telefono: '', cupo_credito: '' });
   const [expandidos, setExpandidos] = useState(new Set());
+  const [movimientos, setMovimientos] = useState({});
+  const [cargandoMov, setCargandoMov] = useState(null);
 
-  const toggleExpandido = (clienteId) => {
+  const toggleExpandido = async (clienteId) => {
     setExpandidos(prev => {
       const next = new Set(prev);
       if (next.has(clienteId)) next.delete(clienteId); else next.add(clienteId);
       return next;
     });
+    // Cargar movimientos si no están cargados
+    if (!movimientos[clienteId]) {
+      setCargandoMov(clienteId);
+      try {
+        const res = await api.get(`/cuentas-cobrar/movimientos/${clienteId}`);
+        if (res.ok && Array.isArray(res.data)) {
+          setMovimientos(prev => ({ ...prev, [clienteId]: res.data }));
+        }
+      } catch {}
+      setCargandoMov(null);
+    }
   };
 
   const cargar = async () => {
@@ -42,15 +57,24 @@ export default function CuentasCobrar() {
   const limpiarFechas = () => { setFechaInicio(''); setFechaFin(''); };
 
   const guardar = async () => {
-    if (!form.cliente_id || !form.monto_total || !form.vencimiento) {
-      setMensaje('⚠️ Completa todos los campos.'); return;
+    if (!form.cliente_id) { setMensaje('⚠️ Selecciona un cliente.'); return; }
+    if (!form.monto_total || parseFloat(form.monto_total) <= 0) { setMensaje('⚠️ El monto debe ser mayor a 0.'); return; }
+    if (!/^\d+(\.\d{1,2})?$/.test(form.monto_total) || parseFloat(form.monto_total) > MAX_MONTO) {
+      setMensaje(`⚠️ El monto debe ser un número válido de hasta 2 decimales y no mayor a ${MAX_MONTO}.`); return;
     }
-    const datos = { cliente_id: parseInt(form.cliente_id), monto_total: parseFloat(form.monto_total), vencimiento: form.vencimiento };
+    if (form.estado !== 'credito' && !form.vencimiento) { setMensaje('⚠️ La fecha de vencimiento es obligatoria.'); return; }
+    const datos = {
+      cliente_id: parseInt(form.cliente_id), monto_total: parseFloat(form.monto_total),
+      vencimiento: form.estado === 'credito' ? null : form.vencimiento,
+      ...(editId ? {} : { estado: form.estado }),
+    };
     const res = editId ? await api.put(`/cuentas-cobrar/${editId}`, datos) : await api.post('/cuentas-cobrar', datos);
     if (res.ok) {
       setMensaje('✅ Cuenta guardada.');
-      setForm({ cliente_id: '', monto_total: '', vencimiento: '' });
+      setForm({ cliente_id: '', monto_total: '', vencimiento: '', estado: 'pendiente' });
       setMostrarForm(false); setEditId(null); cargar();
+    } else {
+      setMensaje('⚠️ ' + (res.mensaje || 'No se pudo guardar la cuenta.'));
     }
     setTimeout(() => setMensaje(''), 3000);
   };
@@ -61,7 +85,18 @@ export default function CuentasCobrar() {
   };
 
   const eliminar = async (id) => {
-    if (!confirm('¿Eliminar esta cuenta?')) return;
+    const result = await Swal.fire({
+      title: '¿Eliminar esta cuenta?',
+      text: 'Esta acción no se puede deshacer.',
+      icon: 'warning',
+      showCancelButton: true,
+      confirmButtonColor: '#C62828',
+      cancelButtonColor: '#1565C0',
+      confirmButtonText: 'Sí, eliminar',
+      cancelButtonText: 'Cancelar',
+      reverseButtons: true,
+    });
+    if (!result.isConfirmed) return;
     const res = await api.delete(`/cuentas-cobrar/${id}`);
     if (res.ok) { setMensaje('✅ Cuenta eliminada.'); cargar(); }
     setTimeout(() => setMensaje(''), 3000);
@@ -70,6 +105,7 @@ export default function CuentasCobrar() {
   const abonar = async (id, saldo) => {
     const monto = prompt(`¿Cuánto deseas abonar? (Saldo: $${saldo})`);
     if (!monto || isNaN(monto) || parseFloat(monto) <= 0) return;
+    if (parseFloat(monto) > MAX_MONTO) { alert(`El abono no puede ser mayor a ${MAX_MONTO}.`); return; }
     if (parseFloat(monto) > parseFloat(saldo)) { alert('El abono no puede ser mayor al saldo.'); return; }
     const res = await api.post(`/cuentas-cobrar/${id}/abonar`, { monto: parseFloat(monto) });
     if (res.ok) {
@@ -84,11 +120,23 @@ export default function CuentasCobrar() {
   };
 
   const guardarCliente = async () => {
-    if (!formCliente.nombre.trim()) { setMensaje('⚠️ El nombre es obligatorio.'); return; }
-    const res = await api.post('/clientes', formCliente);
+    const nombre = formCliente.nombre.trim();
+    if (!nombre) { setMensaje('⚠️ El nombre es obligatorio.'); return; }
+    if (nombre.length < 2 || nombre.length > 60) { setMensaje('⚠️ El nombre debe tener entre 2 y 60 caracteres.'); return; }
+    if (formCliente.cedula && formCliente.cedula.length !== 10 && formCliente.cedula.length !== 13) {
+      setMensaje('⚠️ La cédula debe tener 10 dígitos o el RUC 13.'); return;
+    }
+    if (formCliente.telefono && (formCliente.telefono.length < 7 || formCliente.telefono.length > 10)) {
+      setMensaje('⚠️ El teléfono debe tener entre 7 y 10 dígitos.'); return;
+    }
+    if (formCliente.cupo_credito) {
+      if (parseFloat(formCliente.cupo_credito) < 0) { setMensaje('⚠️ El cupo de crédito no puede ser negativo.'); return; }
+      if (parseFloat(formCliente.cupo_credito) > MAX_MONTO) { setMensaje(`⚠️ El cupo de crédito no puede ser mayor a ${MAX_MONTO}.`); return; }
+    }
+    const res = await api.post('/clientes', { ...formCliente, nombre });
     if (res.ok) {
       setMensaje(res.existente ? `ℹ️ ${res.mensaje}` : '✅ Cliente agregado.');
-      setFormCliente({ nombre: '', cedula: '', telefono: '' });
+      setFormCliente({ nombre: '', cedula: '', telefono: '', cupo_credito: '' });
       setMostrarFormCliente(false); cargar();
     } else {
       setMensaje('⚠️ ' + (res.mensaje || 'No se pudo agregar el cliente.'));
@@ -99,12 +147,19 @@ export default function CuentasCobrar() {
   // El rango de fechas ya viene aplicado desde el backend (las pendientes/vencidas
   // siempre se incluyen ahí; el rango solo restringe las pagadas). Acá solo queda
   // el filtro por estado y la búsqueda de texto, que son puramente de UI.
-  const filtradas = cuentas.filter(c => {
+  const filtradas = Array.isArray(cuentas) ? cuentas.filter(c => {
     if (filtroEstado !== 'todas' && c.estado !== filtroEstado) return false;
     if (busqueda && !String(c.cliente_nombre || '').toLowerCase().includes(busqueda.toLowerCase())) return false;
     return true;
-  });
-  const totalPendiente = cuentas.filter(c => c.estado === 'pendiente').reduce((s, c) => s + parseFloat(c.saldo), 0);
+  }) : [];
+  const totalPendiente = Array.isArray(cuentas) ? cuentas.filter(c => c.estado === 'pendiente').reduce((s, c) => s + parseFloat(c.saldo), 0) : 0;
+
+  // Info de clientes con cupo para mostrar en la tabla
+  const clientesMap = useMemo(() => {
+    const map = new Map();
+    clientes.forEach(c => map.set(c.id, c));
+    return map;
+  }, [clientes]);
 
   // Una fila por cliente (no por cuenta): agrupa las cuentas ya filtradas.
   // Las pendientes/vencidas se resumen en el encabezado; el historial de
@@ -120,10 +175,14 @@ export default function CuentasCobrar() {
       const totalActivo = activas.reduce((s, c) => s + parseFloat(c.saldo), 0);
       const tieneVencida = activas.some(c => c.estado === 'vencida');
       const proximoVencimiento = activas.reduce((min, c) => (!min || new Date(c.vencimiento) < new Date(min)) ? c.vencimiento : min, null);
+      const infoCliente = clientesMap.get(g.cliente_id);
+      const cupo = infoCliente ? parseFloat(infoCliente.cupo_credito) : 0;
+      const disponible = cupo > 0 ? Math.max(cupo - totalActivo, 0) : 0;
       return {
         ...g, totalActivo, tieneVencida, proximoVencimiento,
         cantidadActivas: activas.length,
         cantidadPagadas: g.cuentas.length - activas.length,
+        cupo, disponible,
       };
     });
     arr.sort((a, b) => {
@@ -196,24 +255,30 @@ export default function CuentasCobrar() {
       {mostrarFormCliente && (
         <div style={{background:'#fff',border:'0.5px solid #BBDEFB',borderRadius:'12px',padding:'20px',marginBottom:'16px',boxShadow:'0 1px 4px #00000010'}}>
           <h2 style={{color:'#1565C0',fontSize:'16px',marginBottom:'14px'}}>👤 Nuevo cliente</h2>
-          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:'12px',marginBottom:'14px'}}>
+          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr 1fr',gap:'12px',marginBottom:'14px'}}>
             <div>
               <label style={{fontSize:'12px',color:'#1565C0',display:'block',marginBottom:'6px'}}>Nombre *</label>
-              <input value={formCliente.nombre}
+              <input value={formCliente.nombre} maxLength={60}
                 onChange={e => setFormCliente({...formCliente, nombre: e.target.value.toLowerCase().replace(/(^|\s)\S/g, t => t.toUpperCase())})}
                 placeholder="Ej: Juan Pérez" style={inputStyle} />
             </div>
             <div>
               <label style={{fontSize:'12px',color:'#1565C0',display:'block',marginBottom:'6px'}}>Cédula</label>
-              <input value={formCliente.cedula}
+              <input value={formCliente.cedula} maxLength={13}
                 onChange={e => { if(/^\d*$/.test(e.target.value)) setFormCliente({...formCliente, cedula: e.target.value}); }}
                 placeholder="0000000000" style={inputStyle} />
             </div>
             <div>
               <label style={{fontSize:'12px',color:'#1565C0',display:'block',marginBottom:'6px'}}>Teléfono</label>
-              <input value={formCliente.telefono}
+              <input value={formCliente.telefono} maxLength={10}
                 onChange={e => { if(/^\d*$/.test(e.target.value)) setFormCliente({...formCliente, telefono: e.target.value}); }}
                 placeholder="0991234567" style={inputStyle} />
+            </div>
+            <div>
+              <label style={{fontSize:'12px',color:'#1565C0',display:'block',marginBottom:'6px'}}>Cupo crédito ($)</label>
+              <input value={formCliente.cupo_credito} maxLength={9}
+                onChange={e => setFormCliente({...formCliente, cupo_credito: limpiarMonto(e.target.value)})}
+                placeholder="0 = sin límite" style={inputStyle} />
             </div>
           </div>
           <div style={{display:'flex',gap:'8px',justifyContent:'flex-end'}}>
@@ -242,8 +307,8 @@ export default function CuentasCobrar() {
             </div>
             <div>
               <label style={{fontSize:'12px',color:'#1565C0',display:'block',marginBottom:'6px'}}>Monto ($) *</label>
-              <input value={form.monto_total}
-                onChange={e => { if(/^\d*\.?\d*$/.test(e.target.value)) setForm({...form, monto_total: e.target.value}); }}
+              <input value={form.monto_total} maxLength={9}
+                onChange={e => setForm({...form, monto_total: limpiarMonto(e.target.value)})}
                 placeholder="0.00" style={inputStyle} />
             </div>
             <div>
@@ -340,13 +405,27 @@ export default function CuentasCobrar() {
                       </td>
                       <td style={{padding:'12px 10px',color:'#999',fontSize:'11px'}}>{abierto ? 'Ocultar' : 'Ver cuentas'}</td>
                     </tr>
+                    {abierto && (
+                      <>
+                        {/* Información de cupo de crédito */}
+                        {g.cupo > 0 && (
+                          <tr style={{background:'#FFF8E1'}}>
+                            <td colSpan={7} style={{padding:'8px 14px',fontSize:'12px',color:'#E65100'}}>
+                              💳 Cupo crédito: <strong>${g.cupo.toFixed(2)}</strong>
+                              &nbsp;·&nbsp; Usado: <strong style={{color:'#C62828'}}>${g.totalActivo.toFixed(2)}</strong>
+                              &nbsp;·&nbsp; Disponible: <strong style={{color:'#2E7D32'}}>${g.disponible.toFixed(2)}</strong>
+                            </td>
+                          </tr>
+                        )}
+                      </>
+                    )}
                     {abierto && g.cuentas.map(c => (
                       <tr key={c.id} style={{borderBottom:'0.5px solid #e0e0e0'}}>
                         <td style={{padding:'10px 10px 10px 28px',color:'#999',fontSize:'12px'}}>↳ cuenta #{c.id}</td>
                         <td style={{padding:'10px',color:'#333'}}>${parseFloat(c.monto_total).toFixed(2)}</td>
                         <td style={{padding:'10px',color:'#2E7D32'}}>${parseFloat(c.monto_pagado).toFixed(2)}</td>
                         <td style={{padding:'10px',color:'#E65100',fontWeight:'500'}}>${parseFloat(c.saldo).toFixed(2)}</td>
-                        <td style={{padding:'10px',color:'#666',whiteSpace:'nowrap'}}>{new Date(c.vencimiento).toLocaleDateString()}</td>
+                        <td style={{padding:'10px',color:'#666',whiteSpace:'nowrap'}}>{c.vencimiento ? new Date(c.vencimiento).toLocaleDateString() : '—'}</td>
                         <td style={{padding:'10px'}}>
                           <span style={{padding:'3px 10px',borderRadius:'20px',fontSize:'11px',fontWeight:'500',
                             background: bgEstado(c.estado), color: colorEstado(c.estado),
@@ -356,20 +435,76 @@ export default function CuentasCobrar() {
                         </td>
                         <td style={{padding:'10px'}}>
                           <div style={{display:'flex',gap:'4px'}}>
-                            {c.estado !== 'pagada' && (
+                            {c.estado !== 'pagada' && c.estado !== 'credito' && (
                               <button onClick={(e) => { e.stopPropagation(); abonar(c.id, c.saldo); }}
                                 style={{padding:'4px 10px',borderRadius:'5px',border:'1px solid #1565C0',background:'#E3F2FD',color:'#1565C0',cursor:'pointer',fontSize:'11px'}}>
                                 💵
                               </button>
                             )}
-                            <button onClick={(e) => { e.stopPropagation(); editar(c); }}
-                              style={{padding:'4px 10px',borderRadius:'5px',border:'1px solid #BBDEFB',background:'#fff',color:'#1565C0',cursor:'pointer',fontSize:'11px'}}>
-                              ✏️
-                            </button>
+                            {c.estado !== 'credito' && (
+                              <button onClick={(e) => { e.stopPropagation(); editar(c); }}
+                                style={{padding:'4px 10px',borderRadius:'5px',border:'1px solid #BBDEFB',background:'#fff',color:'#1565C0',cursor:'pointer',fontSize:'11px'}}>
+                                ✏️
+                              </button>
+                            )}
                           </div>
                         </td>
                       </tr>
                     ))}
+                    {/* Historial de movimientos */}
+                    {abierto && (
+                      <tr>
+                        <td colSpan={7} style={{padding:'10px 20px',background:'#F8F9FA'}}>
+                          <div style={{fontSize:'13px',color:'#1565C0',fontWeight:'500',marginBottom:'8px'}}>
+                            📋 Historial de movimientos
+                          </div>
+                          {cargandoMov === g.cliente_id ? (
+                            <div style={{fontSize:'12px',color:'#999'}}>Cargando movimientos...</div>
+                          ) : movimientos[g.cliente_id] && movimientos[g.cliente_id].length > 0 ? (
+                            <table style={{width:'100%',borderCollapse:'collapse',fontSize:'12px'}}>
+                              <thead>
+                                <tr style={{background:'#E3F2FD'}}>
+                                  <th style={{padding:'6px 8px',textAlign:'left',color:'#1565C0',borderBottom:'1px solid #BBDEFB'}}>Fecha</th>
+                                  <th style={{padding:'6px 8px',textAlign:'left',color:'#1565C0',borderBottom:'1px solid #BBDEFB'}}>Concepto</th>
+                                  <th style={{padding:'6px 8px',textAlign:'right',color:'#1565C0',borderBottom:'1px solid #BBDEFB'}}>Cargo</th>
+                                  <th style={{padding:'6px 8px',textAlign:'right',color:'#1565C0',borderBottom:'1px solid #BBDEFB'}}>Abono</th>
+                                  <th style={{padding:'6px 8px',textAlign:'right',color:'#1565C0',borderBottom:'1px solid #BBDEFB'}}>Saldo</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {(() => {
+                                  let acumulado = 0;
+                                  return movimientos[g.cliente_id].map(m => {
+                                    const monto = parseFloat(m.monto);
+                                    if (m.tipo === 'cargo') acumulado += monto;
+                                    else acumulado -= monto;
+                                    return (
+                                      <tr key={m.id} style={{borderBottom:'0.5px solid #e0e0e0'}}>
+                                        <td style={{padding:'6px 8px',color:'#666',whiteSpace:'nowrap'}}>
+                                          {new Date(m.fecha).toLocaleDateString()} {new Date(m.fecha).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}
+                                        </td>
+                                        <td style={{padding:'6px 8px',color:'#333'}}>{m.descripcion}</td>
+                                        <td style={{padding:'6px 8px',textAlign:'right',color:'#C62828'}}>
+                                          {m.tipo === 'cargo' ? `$${monto.toFixed(2)}` : '—'}
+                                        </td>
+                                        <td style={{padding:'6px 8px',textAlign:'right',color:'#2E7D32'}}>
+                                          {m.tipo === 'abono' ? `$${monto.toFixed(2)}` : '—'}
+                                        </td>
+                                        <td style={{padding:'6px 8px',textAlign:'right',color:'#333',fontWeight:'500'}}>
+                                          ${acumulado.toFixed(2)}
+                                        </td>
+                                      </tr>
+                                    );
+                                  });
+                                })()}
+                              </tbody>
+                            </table>
+                          ) : (
+                            <div style={{fontSize:'12px',color:'#999'}}>No hay movimientos registrados.</div>
+                          )}
+                        </td>
+                      </tr>
+                    )}
                   </Fragment>
                 );
               })

@@ -1,4 +1,5 @@
 const db = require('../config/db');
+const { validarTexto, validarCedula, validarTelefono, validarMonto } = require('../utils/validadores');
 
 // Rango de fechas sobre vencimiento; si no viene desde/hasta, no filtra nada (1=1).
 function filtroFechaVencimiento(query, alias) {
@@ -30,8 +31,18 @@ const getCuentas = async (req, res) => {
   }
 };
 
+function validarCuenta(body) {
+  if (!body.proveedor_id) return 'Selecciona un proveedor.';
+  const errorMonto = validarMonto(body.monto_total, { mayorQueCero: true, campo: 'El monto' });
+  if (errorMonto) return errorMonto;
+  if (!body.vencimiento) return 'La fecha de vencimiento es obligatoria.';
+  return null;
+}
+
 const crearCuenta = async (req, res) => {
   try {
+    const error = validarCuenta(req.body);
+    if (error) return res.status(400).json({ ok: false, mensaje: error });
     const { proveedor_id, monto_total, vencimiento } = req.body;
     await db.query(
       `INSERT INTO cuentas_pagar (proveedor_id, monto_total, monto_pagado, saldo, vencimiento)
@@ -46,6 +57,8 @@ const crearCuenta = async (req, res) => {
 
 const editarCuenta = async (req, res) => {
   try {
+    const error = validarCuenta(req.body);
+    if (error) return res.status(400).json({ ok: false, mensaje: error });
     const { proveedor_id, monto_total, vencimiento } = req.body;
     await db.query(
       `UPDATE cuentas_pagar SET proveedor_id=?, monto_total=?, saldo=?, vencimiento=? WHERE id=?`,
@@ -71,12 +84,12 @@ const abonar = async (req, res) => {
   try {
     await conn.beginTransaction();
     const { id } = req.params;
-    const monto = parseFloat(req.body.monto);
-
-    if (!monto || monto <= 0) {
+    const errorMonto = validarMonto(req.body.monto, { mayorQueCero: true, campo: 'El monto del pago' });
+    if (errorMonto) {
       await conn.rollback();
-      return res.status(400).json({ ok: false, mensaje: 'El monto del pago debe ser mayor a 0.' });
+      return res.status(400).json({ ok: false, mensaje: errorMonto });
     }
+    const monto = parseFloat(req.body.monto);
 
     const [rows] = await conn.query(
       `SELECT cp.*, p.nombre AS proveedor_nombre
@@ -131,12 +144,23 @@ const getProveedores = async (req, res) => {
   }
 };
 
+function validarProveedor(body) {
+  return (
+    validarTexto(body.nombre, { min: 2, max: 60, campo: 'El nombre del proveedor' }) ||
+    validarCedula(body.ruc, { campo: 'El RUC' }) ||
+    validarTelefono(body.telefono)
+  );
+}
+
 const crearProveedor = async (req, res) => {
   try {
+    const error = validarProveedor(req.body);
+    if (error) return res.status(400).json({ ok: false, mensaje: error });
     const { nombre, ruc, telefono } = req.body;
+    const nombreLimpio = nombre.trim();
     await db.query(
       `INSERT INTO proveedores (nombre, ruc, telefono) VALUES (?, ?, ?)`,
-      [nombre.charAt(0).toUpperCase() + nombre.slice(1).toLowerCase(), ruc || '', telefono || '']
+      [nombreLimpio.charAt(0).toUpperCase() + nombreLimpio.slice(1).toLowerCase(), (ruc || '').trim(), (telefono || '').trim()]
     );
     res.json({ ok: true });
   } catch (err) {
@@ -146,10 +170,13 @@ const crearProveedor = async (req, res) => {
 
 const editarProveedor = async (req, res) => {
   try {
+    const error = validarProveedor(req.body);
+    if (error) return res.status(400).json({ ok: false, mensaje: error });
     const { nombre, ruc, telefono } = req.body;
+    const nombreLimpio = nombre.trim();
     await db.query(
       `UPDATE proveedores SET nombre=?, ruc=?, telefono=? WHERE id=?`,
-      [nombre.charAt(0).toUpperCase() + nombre.slice(1).toLowerCase(), ruc || '', telefono || '', req.params.id]
+      [nombreLimpio.charAt(0).toUpperCase() + nombreLimpio.slice(1).toLowerCase(), (ruc || '').trim(), (telefono || '').trim(), req.params.id]
     );
     res.json({ ok: true });
   } catch (err) {

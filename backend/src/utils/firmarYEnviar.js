@@ -34,12 +34,22 @@ async function firmarYEnviar(xmlSinFirmar, claveAcceso) {
   }
   const { signXml, documentReception, documentAuthorization } = openFactura;
   const ambiente = process.env.SRI_AMBIENTE === '2' ? 'produccion' : 'pruebas';
+  const urlRecepcion    = process.env.SRI_RECEPTION_URL     || WS[ambiente].recepcion;
+  const urlAutorizacion = process.env.SRI_AUTHORIZATION_URL || WS[ambiente].autorizacion;
 
   try {
     const p12 = fs.readFileSync(p12Path);
     const xmlFirmado = await signXml(p12, p12Pass, xmlSinFirmar);
-    const recepcion = await documentReception(xmlFirmado, WS[ambiente].recepcion);
-    const autorizacion = await documentAuthorization(claveAcceso, WS[ambiente].autorizacion);
+    const recepcion = await documentReception(xmlFirmado, urlRecepcion);
+
+    // Si el SRI devuelve (DEVUELTA) el comprobante en la recepción por errores de
+    // forma/firma, no existe nada que autorizar todavía — consultarlo igual solo
+    // devolvería "no existe" y confundiría la interpretación de la respuesta.
+    const estadoRecepcion = recepcion?.RespuestaRecepcionComprobante?.estado || recepcion?.estado;
+    const autorizacion = estadoRecepcion === 'RECIBIDA'
+      ? await documentAuthorization(claveAcceso, urlAutorizacion)
+      : null;
+
     return { ok: true, ambiente, xmlFirmado, recepcion, autorizacion };
   } catch (err) {
     return { ok: false, paso: 'envio', mensaje: err.message };

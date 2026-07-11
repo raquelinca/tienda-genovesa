@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api } from '../services/api';
+import { limpiarMonto, MAX_MONTO } from '../utils/numeros';
 
 export default function CuentasPagar() {
   const [cuentas, setCuentas] = useState([]);
@@ -35,15 +36,20 @@ export default function CuentasPagar() {
   const limpiarFechas = () => { setFechaInicio(''); setFechaFin(''); };
 
   const guardar = async () => {
-    if (!form.proveedor_id || !form.monto_total || !form.vencimiento) {
-      setMensaje('⚠️ Completa todos los campos.'); return;
+    if (!form.proveedor_id) { setMensaje('⚠️ Selecciona un proveedor.'); return; }
+    if (!form.monto_total || parseFloat(form.monto_total) <= 0) { setMensaje('⚠️ El monto debe ser mayor a 0.'); return; }
+    if (!/^\d+(\.\d{1,2})?$/.test(form.monto_total) || parseFloat(form.monto_total) > MAX_MONTO) {
+      setMensaje(`⚠️ El monto debe ser un número válido de hasta 2 decimales y no mayor a ${MAX_MONTO}.`); return;
     }
+    if (!form.vencimiento) { setMensaje('⚠️ La fecha de vencimiento es obligatoria.'); return; }
     const datos = { proveedor_id: parseInt(form.proveedor_id), monto_total: parseFloat(form.monto_total), vencimiento: form.vencimiento };
     const res = editId ? await api.put(`/cuentas-pagar/${editId}`, datos) : await api.post('/cuentas-pagar', datos);
     if (res.ok) {
       setMensaje('✅ Cuenta guardada.');
       setForm({ proveedor_id: '', monto_total: '', vencimiento: '' });
       setMostrarForm(false); setEditId(null); cargar();
+    } else {
+      setMensaje('⚠️ ' + (res.mensaje || 'No se pudo guardar la cuenta.'));
     }
     setTimeout(() => setMensaje(''), 3000);
   };
@@ -63,6 +69,7 @@ export default function CuentasPagar() {
   const abonar = async (id, saldo) => {
     const monto = prompt(`¿Cuánto deseas pagar? (Saldo: $${saldo})`);
     if (!monto || isNaN(monto) || parseFloat(monto) <= 0) return;
+    if (parseFloat(monto) > MAX_MONTO) { alert(`El pago no puede ser mayor a ${MAX_MONTO}.`); return; }
     if (parseFloat(monto) > parseFloat(saldo)) { alert('El pago no puede ser mayor al saldo.'); return; }
     const res = await api.post(`/cuentas-pagar/${id}/abonar`, { monto: parseFloat(monto) });
     if (res.ok) {
@@ -77,14 +84,25 @@ export default function CuentasPagar() {
   };
 
   const guardarProveedor = async () => {
-    if (!formProveedor.nombre.trim()) { setMensaje('⚠️ El nombre es obligatorio.'); return; }
+    const nombre = formProveedor.nombre.trim();
+    if (!nombre) { setMensaje('⚠️ El nombre es obligatorio.'); return; }
+    if (nombre.length < 2 || nombre.length > 60) { setMensaje('⚠️ El nombre debe tener entre 2 y 60 caracteres.'); return; }
+    if (formProveedor.ruc && formProveedor.ruc.length !== 10 && formProveedor.ruc.length !== 13) {
+      setMensaje('⚠️ El RUC debe tener 10 o 13 dígitos.'); return;
+    }
+    if (formProveedor.telefono && (formProveedor.telefono.length < 7 || formProveedor.telefono.length > 10)) {
+      setMensaje('⚠️ El teléfono debe tener entre 7 y 10 dígitos.'); return;
+    }
+    const datos = { ...formProveedor, nombre };
     const res = editProveedorId
-      ? await api.put(`/proveedores/${editProveedorId}`, formProveedor)
-      : await api.post('/proveedores', formProveedor);
+      ? await api.put(`/proveedores/${editProveedorId}`, datos)
+      : await api.post('/proveedores', datos);
     if (res.ok) {
       setMensaje('✅ Proveedor guardado.');
       setFormProveedor({ nombre: '', ruc: '', telefono: '' });
       setMostrarFormProveedor(false); setEditProveedorId(null); cargar();
+    } else {
+      setMensaje('⚠️ ' + (res.mensaje || 'No se pudo guardar el proveedor.'));
     }
     setTimeout(() => setMensaje(''), 3000);
   };
@@ -105,12 +123,12 @@ export default function CuentasPagar() {
 
   // El rango de fechas ya viene aplicado desde el backend; acá solo queda el
   // filtro por estado y la búsqueda de texto, que son puramente de UI.
-  const filtradas = cuentas.filter(c => {
+  const filtradas = Array.isArray(cuentas) ? cuentas.filter(c => {
     if (filtroEstado !== 'todas' && c.estado !== filtroEstado) return false;
     if (busqueda && !String(c.proveedor_nombre || '').toLowerCase().includes(busqueda.toLowerCase())) return false;
     return true;
-  });
-  const totalPendiente = cuentas.filter(c => c.estado === 'pendiente').reduce((s, c) => s + parseFloat(c.saldo), 0);
+  }) : [];
+  const totalPendiente = Array.isArray(cuentas) ? cuentas.filter(c => c.estado === 'pendiente').reduce((s, c) => s + parseFloat(c.saldo), 0) : 0;
 
   const inputStyle = {
     width:'100%', padding:'9px 12px', borderRadius:'6px',
@@ -202,19 +220,19 @@ export default function CuentasPagar() {
           <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:'12px',marginBottom:'14px'}}>
             <div>
               <label style={{fontSize:'12px',color:'#1565C0',display:'block',marginBottom:'6px'}}>Nombre *</label>
-              <input value={formProveedor.nombre}
+              <input value={formProveedor.nombre} maxLength={60}
                 onChange={e => setFormProveedor({...formProveedor, nombre: formatearNombre(e.target.value)})}
                 placeholder="Ej: Distribuidora Xyz" style={inputStyle} />
             </div>
             <div>
               <label style={{fontSize:'12px',color:'#1565C0',display:'block',marginBottom:'6px'}}>RUC</label>
-              <input value={formProveedor.ruc}
+              <input value={formProveedor.ruc} maxLength={13}
                 onChange={e => { if(/^\d*$/.test(e.target.value)) setFormProveedor({...formProveedor, ruc: e.target.value}); }}
                 placeholder="0000000000001" style={inputStyle} />
             </div>
             <div>
               <label style={{fontSize:'12px',color:'#1565C0',display:'block',marginBottom:'6px'}}>Teléfono</label>
-              <input value={formProveedor.telefono}
+              <input value={formProveedor.telefono} maxLength={10}
                 onChange={e => { if(/^\d*$/.test(e.target.value)) setFormProveedor({...formProveedor, telefono: e.target.value}); }}
                 placeholder="0991234567" style={inputStyle} />
             </div>
@@ -245,8 +263,8 @@ export default function CuentasPagar() {
             </div>
             <div>
               <label style={{fontSize:'12px',color:'#1565C0',display:'block',marginBottom:'6px'}}>Monto ($) *</label>
-              <input value={form.monto_total}
-                onChange={e => { if(/^\d*\.?\d*$/.test(e.target.value)) setForm({...form, monto_total: e.target.value}); }}
+              <input value={form.monto_total} maxLength={9}
+                onChange={e => setForm({...form, monto_total: limpiarMonto(e.target.value)})}
                 placeholder="0.00" style={inputStyle} />
             </div>
             <div>

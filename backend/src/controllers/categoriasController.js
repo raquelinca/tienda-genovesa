@@ -1,4 +1,5 @@
 const db = require('../config/db');
+const { validarTexto } = require('../utils/validadores');
 
 const getCategorias = async (req, res) => {
   try {
@@ -11,8 +12,9 @@ const getCategorias = async (req, res) => {
 
 const crearCategoria = async (req, res) => {
   try {
-    const nombre = (req.body.nombre || '').trim().toUpperCase();
-    if (!nombre) return res.status(400).json({ ok: false, mensaje: 'El nombre es obligatorio.' });
+    const error = validarTexto(req.body.nombre, { min: 2, max: 60, campo: 'El nombre de la categoría' });
+    if (error) return res.status(400).json({ ok: false, mensaje: error });
+    const nombre = req.body.nombre.trim().toUpperCase();
     await db.query(`INSERT INTO categorias (nombre) VALUES (?)`, [nombre]);
     res.json({ ok: true });
   } catch (err) {
@@ -28,10 +30,12 @@ const crearCategoria = async (req, res) => {
 
 const editarCategoria = async (req, res) => {
   try {
-    const { nombre } = req.body;
+    const error = validarTexto(req.body.nombre, { min: 2, max: 60, campo: 'El nombre de la categoría' });
+    if (error) return res.status(400).json({ ok: false, mensaje: error });
+    const nombre = req.body.nombre.trim().toUpperCase();
     await db.query(
       `UPDATE categorias SET nombre=? WHERE id=?`,
-      [nombre.toUpperCase(), req.params.id]
+      [nombre, req.params.id]
     );
     res.json({ ok: true });
   } catch (err) {
